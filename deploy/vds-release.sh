@@ -65,7 +65,7 @@ install_dependencies() {
   local release_dir="$1"
   cd "$release_dir"
   if command -v uv >/dev/null 2>&1; then
-    uv venv --seed
+    uv venv
     uv pip install -r requirements.txt
   elif command -v python3 >/dev/null 2>&1; then
     python3 -m venv .venv
