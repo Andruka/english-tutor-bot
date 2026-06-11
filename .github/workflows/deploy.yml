@@ -1,0 +1,70 @@
+name: Deploy to VDS
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-vds
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to VDS
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'andrey-cpp' }}  # защита от fork
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VDS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VDS_HOST || '45.134.13.27' }} >> ~/.ssh/known_hosts
+
+      - name: Transfer files (tar | ssh pipe)
+        run: |
+          tar cz \
+            --exclude='.env' \
+            --exclude='__pycache__' \
+            --exclude='.venv' \
+            --exclude='data' \
+            --exclude='.git' \
+            --exclude='*.pyc' \
+            -f - . | \
+          ssh deploy@${{ secrets.VDS_HOST || '45.134.13.27' }} \
+            "rm -rf ~/english-tutor-bot && mkdir -p ~/english-tutor-bot && tar xz -C ~/english-tutor-bot"
+
+      - name: Install dependencies
+        run: |
+          ssh deploy@${{ secrets.VDS_HOST || '45.134.13.27' }} "
+            cd ~/english-tutor-bot
+            ~/.local/bin/uv venv --seed 2>/dev/null || true
+            ~/.local/bin/uv pip install -r requirements.txt
+          "
+
+      - name: Verify imports
+        run: |
+          ssh deploy@${{ secrets.VDS_HOST || '45.134.13.27' }} "
+            cd ~/english-tutor-bot && source .venv/bin/activate
+            python -c 'import aiogram; import aiosqlite; import edge_tts; print(\"All imports OK\")'
+          "
+
+      - name: Send notification
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ✅ english-tutor-bot deployed to VDS
+            
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref_name }}
+            Author: ${{ github.actor }}
+            
+            🔄 Restart required:
+            sudo systemctl restart english-tutor-bot

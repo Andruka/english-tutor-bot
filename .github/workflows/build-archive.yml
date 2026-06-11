@@ -1,0 +1,118 @@
+name: Build deployable archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (leave empty for latest commit)"
+        required: false
+        type: string
+      upload-release:
+        description: "Upload to GitHub Releases (only works with a tag)"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    # Triggered by tests.yml or other workflows after CI passes
+  push:
+    branches:
+      - main
+
+jobs:
+  build-archive:
+    name: Build archive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        if: github.event_name != 'workflow_call'
+        run: python -m pytest tests/ -q --tb=short
+
+      - name: Build release archive
+        run: |
+          VERSION="${{ github.event.inputs.tag || github.sha }}"
+          ARCHIVE_NAME="english-tutor-bot-${VERSION}.tar.gz"
+          mkdir -p /tmp/export
+
+          # Собираем только нужные файлы в чистую директорию
+          rsync -a --delete \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='__pycache__/' \
+            --exclude='*.pyc' \
+            --exclude='*.pyo' \
+            --exclude='.venv/' \
+            --exclude='venv/' \
+            --exclude='.env' \
+            --exclude='data/' \
+            --exclude='htmlcov/' \
+            --exclude='.coverage' \
+            --exclude='coverage.xml' \
+            --exclude='*.egg-info/' \
+            --exclude='.DS_Store' \
+            --exclude='Thumbs.db' \
+            --exclude='.pytest_cache/' \
+            --exclude='.ruff_cache/' \
+            --exclude='_tmp_db_inspect.py' \
+            --exclude='english_tutor.db' \
+            --exclude='plans/' \
+            --exclude='research/' \
+            --exclude='tests/' \
+            --exclude='pytest.ini' \
+            ./ /tmp/export/english-tutor-bot/
+
+          cd /tmp/export
+          tar czf "${ARCHIVE_NAME}" english-tutor-bot/
+          echo "archive_path=/tmp/export/${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "archive_name=${ARCHIVE_NAME}" >> $GITHUB_ENV
+
+      - name: Upload archive as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.archive_name }}
+          path: ${{ env.archive_path }}
+          retention-days: 7
+
+      - name: Verify archive
+        run: |
+          cd /tmp
+          tar xzf "${{ env.archive_path }}"
+          echo "=== Archive contents ==="
+          find english-tutor-bot/ -type f | sort
+          echo "=== Key files check ==="
+          test -f english-tutor-bot/requirements.txt && echo "  ✅ requirements.txt"
+          test -d english-tutor-bot/bot && echo "  ✅ bot/"
+          test -d english-tutor-bot/deploy && echo "  ✅ deploy/"
+          test -f english-tutor-bot/bot/main.py && echo "  ✅ bot/main.py"
+          test -f english-tutor-bot/deploy/english-tutor-bot.service && echo "  ✅ systemd service"
+          test -f english-tutor-bot/deploy/build-archive.sh && echo "  ✅ build-archive.sh"
+          test -f english-tutor-bot/deploy/deploy.sh && echo "  ✅ deploy.sh"
+          test -f english-tutor-bot/deploy/vds-release.sh && echo "  ✅ vds-release.sh"
+          test -f english-tutor-bot/deploy/english-tutor-bot.service && grep -q '/current' english-tutor-bot/deploy/english-tutor-bot.service && echo "  ✅ service uses current symlink"
+          # Проверяем, что нежелательные файлы отсутствуют
+          ! test -f english-tutor-bot/_tmp_db_inspect.py && echo "  ✅ _tmp_db_inspect.py excluded"
+          ! test -f english-tutor-bot/english_tutor.db && echo "  ✅ english_tutor.db excluded"
+          ! test -d english-tutor-bot/plans && echo "  ✅ plans/ excluded"
+          ! test -d english-tutor-bot/tests && echo "  ✅ tests/ excluded"
+          echo "✅ Archive verified"
+
+      - name: Upload to GitHub Release (tagged releases only)
+        if: ${{ github.event.inputs.upload-release == 'true' && github.event.inputs.tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.inputs.tag }}" \
+            "${{ env.archive_path }}" \
+            --clobber
+          echo "✅ Uploaded to release ${{ github.event.inputs.tag }}"
