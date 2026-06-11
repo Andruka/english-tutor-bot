@@ -64,9 +64,11 @@ prepare_common_dirs() {
 install_dependencies() {
   local release_dir="$1"
   cd "$release_dir"
-  if command -v uv >/dev/null 2>&1; then
-    uv venv
-    uv pip install -r requirements.txt
+  local uv_cmd
+  uv_cmd="$(command -v uv 2>/dev/null || find /home/deploy/.local/bin -name uv -type f 2>/dev/null | head -1)"
+  if [ -n "$uv_cmd" ] && [ -x "$uv_cmd" ]; then
+    "$uv_cmd" venv
+    "$uv_cmd" pip install -r requirements.txt
   elif command -v python3 >/dev/null 2>&1; then
     python3 -m venv .venv
     .venv/bin/python -m pip install --upgrade pip
