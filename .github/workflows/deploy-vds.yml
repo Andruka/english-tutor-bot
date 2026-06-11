@@ -33,7 +33,7 @@ on:
         type: string
       dry_run:
         description: "Validate inputs and remote connectivity without changing current release"
-        required: true
+        required: false
         type: boolean
         default: false
 
@@ -49,7 +49,6 @@ jobs:
   deploy:
     name: ${{ inputs.operation }} ${{ inputs.environment }}
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
     timeout-minutes: 20
     env:
       SERVICE_NAME: ${{ vars.SERVICE_NAME || 'english-tutor-bot' }}
