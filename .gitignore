@@ -30,6 +30,7 @@ coverage.xml
 
 # Data
 data/
+*.db
 
 # Exports
 /exports/
