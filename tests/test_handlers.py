@@ -49,7 +49,7 @@ async def test_cmd_start_new_user():
     try:
         with patch.object(Message, "answer", new_callable=AsyncMock) as mock_answer:
             msg = make_message("/start", user_id=100)
-            await cmd_start(msg)
+            await cmd_start(msg, command=SimpleNamespace(args=None))
             mock_answer.assert_called_once()
             text = mock_answer.call_args[0][0]
             assert "Привет" in text or "уровень" in text.lower()
@@ -79,7 +79,7 @@ async def test_cmd_start_new_user_offers_placement_test_or_manual_level_choice()
     try:
         with patch.object(Message, "answer", new_callable=AsyncMock) as mock_answer:
             msg = make_message("/start", user_id=101)
-            await cmd_start(msg)
+            await cmd_start(msg, command=SimpleNamespace(args=None))
 
             mock_answer.assert_called_once()
             reply_markup = mock_answer.call_args.kwargs["reply_markup"]

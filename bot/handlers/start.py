@@ -11,11 +11,12 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart, Command, CommandObject
 
-from bot.db import UserRepository, get_conn
+from bot.db import UserRepository, ReferralRewardRepository, get_conn
 from bot.handlers.placement import _start_new_test
 from bot.keyboards import main_menu_kb
+from bot.services.referral_service import parse_referral, award_referral_bonus
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -76,8 +77,8 @@ def topic_keyboard() -> ReplyKeyboardMarkup:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
-    """Обработчик /start — приветствие и регистрация."""
+async def cmd_start(message: Message, command: CommandObject):
+    """Обработчик /start — приветствие, регистрация и реферальная ссылка."""
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name or "User"
 
@@ -104,13 +105,35 @@ async def cmd_start(message: Message):
         )
         return
 
+    # Парсим реферальную ссылку
+    referrer_id = parse_referral(command.args)
+
     await repo.create(user_id=user_id, level="A2", username=username)
+
+    # Если есть реферер — привязываем и начисляем бонусы
+    if referrer_id and referrer_id != user_id:
+        reward_repo = ReferralRewardRepository(conn)
+        try:
+            await repo.set_referrer(user_id, referrer_id)
+            bonus = await award_referral_bonus(repo, reward_repo, user_id, referrer_id)
+            referral_msg = (
+                f"\n\n🎉 <b>Реферальный бонус!</b>\n"
+                f"Ты получил {bonus['referred_days']} дня Premium! "
+                f"Пользуйся на здоровье 🚀"
+            )
+        except Exception as e:
+            logger.error(f"Referral error for user {user_id} from {referrer_id}: {e}")
+            referral_msg = ""
+    else:
+        referral_msg = ""
+
     await message.answer(
         f"👋 Привет, {username}! Я AI-репетитор английского.\n\n"
         f"Я помогу тебе:\n"
         f"🎯 Практиковать разговорный английский\n"
         f"✏️ Исправлять ошибки\n"
-        f"📈 Отслеживать прогресс\n\n"
+        f"📈 Отслеживать прогресс"
+        f"{referral_msg}\n\n"
         f"Выбери, как определить твой уровень:",
         reply_markup=onboarding_keyboard(),
     )

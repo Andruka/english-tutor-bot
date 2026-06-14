@@ -216,8 +216,8 @@ def settings_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="⭐ Подписка", callback_data="menu_subscribe"),
+                InlineKeyboardButton(text="👥 Рефералы", callback_data="menu_referral"),
                 InlineKeyboardButton(text="🆕 Новый диалог", callback_data="menu_new"),
-                InlineKeyboardButton(text="📖 Помощь", callback_data="menu_help"),
             ],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_main")],
         ]
@@ -489,6 +489,9 @@ async def menu_callback_handler(callback: CallbackQuery):
         )
     elif data == "set_remind":
         await callback.message.edit_text("🔔 Напиши /remind для настройки напоминаний!")
+
+    elif data == "menu_referral":
+        await callback.message.edit_text("🤝 Напиши /referral, чтобы увидеть реферальную ссылку!")
 
     # Режимы
     elif data.startswith("mode_"):

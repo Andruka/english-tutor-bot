@@ -214,6 +214,8 @@ async def test_admin_can_inspect_user_details_by_id(tmp_path):
             "subscription_expiry": "2030-01-01T00:00:00+00:00",
             "trial_taken": False,
             "streak": 0,
+            "referrer_id": None,
+            "referral_count": 0,
             "created_at": payload["profile"]["created_at"],
         }
         assert payload["activity"]["dialogue_count"] == 2

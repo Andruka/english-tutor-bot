@@ -20,6 +20,8 @@ class User:
     subscription_expiry: Optional[str] = None
     trial_taken: bool = False
     streak: int = 0
+    referrer_id: int | None = None
+    referral_count: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -57,6 +59,8 @@ async def init_db(db_path: str = None):
                 subscription_expiry TEXT,
                 trial_taken INTEGER DEFAULT 0,
                 streak INTEGER DEFAULT 0,
+                referrer_id INTEGER DEFAULT NULL,
+                referral_count INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
         """)
@@ -67,6 +71,8 @@ async def init_db(db_path: str = None):
         user_migrations = {
             "trial_taken": "INTEGER DEFAULT 0",
             "subscription_tier": "TEXT DEFAULT 'basic'",
+            "referrer_id": "INTEGER DEFAULT NULL",
+            "referral_count": "INTEGER DEFAULT 0",
         }
         for col_name, definition in user_migrations.items():
             if col_name not in existing_cols:
@@ -225,6 +231,20 @@ async def init_db(db_path: str = None):
             );
         """)
 
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS referral_rewards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                referred_user_id INTEGER NOT NULL,
+                reward_type TEXT NOT NULL DEFAULT 'premium_days',
+                reward_value INTEGER NOT NULL DEFAULT 7,
+                claimed INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (referred_user_id) REFERENCES users(user_id)
+            );
+        """)
+
         # Идемпотентная миграция — subscription_tier для существующих БД
         try:
             await conn.execute(
@@ -344,6 +364,28 @@ class UserRepository:
         assert user is not None, f"User {user_id} not found after trial activation"
         return user
 
+    async def set_referrer(self, user_id: int, referrer_id: int) -> None:
+        """Привязывает пользователя к рефереру."""
+        if user_id == referrer_id:
+            raise ValueError("cannot refer self")
+        await self.conn.execute(
+            "UPDATE users SET referrer_id = ? WHERE user_id = ?",
+            (referrer_id, user_id),
+        )
+        await self.conn.execute(
+            "UPDATE users SET referral_count = referral_count + 1 WHERE user_id = ?",
+            (referrer_id,),
+        )
+        await self.conn.commit()
+
+    async def get_referral_count(self, user_id: int) -> int:
+        """Количество приглашённых пользователей."""
+        cursor = await self.conn.execute(
+            "SELECT referral_count FROM users WHERE user_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
     async def update_streak(self, user_id: int):
         """Обновление streak — если последний диалог был вчера, увеличиваем."""
         today = date.today()
@@ -386,6 +428,8 @@ class UserRepository:
             subscription_expiry=row["subscription_expiry"],
             trial_taken=bool(row["trial_taken"]),
             streak=row["streak"] or 0,
+            referrer_id=row["referrer_id"] if "referrer_id" in row.keys() else None,
+            referral_count=row["referral_count"] if "referral_count" in row.keys() else 0,
             created_at=datetime.fromisoformat(row["created_at"]),
         )
 
@@ -959,5 +1003,75 @@ class MicroLessonRepository:
             answer=row["answer"],
             is_correct=bool(row["is_correct"]),
             feedback=row["feedback"],
+            created_at=row["created_at"],
+        )
+
+
+@dataclass
+class ReferralReward:
+    id: int = 0
+    user_id: int = 0
+    referred_user_id: int = 0
+    reward_type: str = "premium_days"
+    reward_value: int = 7
+    claimed: bool = False
+    created_at: Optional[str] = None
+
+
+class ReferralRewardRepository:
+    """Repository for referral rewards."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def add_reward(
+        self, user_id: int, referred_user_id: int, reward_value: int = 7
+    ) -> ReferralReward:
+        cursor = await self.conn.execute(
+            """INSERT INTO referral_rewards
+               (user_id, referred_user_id, reward_value)
+               VALUES (?, ?, ?)""",
+            (user_id, referred_user_id, reward_value),
+        )
+        await self.conn.commit()
+        return await self.get(cursor.lastrowid)
+
+    async def get(self, reward_id: int) -> Optional[ReferralReward]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM referral_rewards WHERE id = ?", (reward_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_reward(row) if row else None
+
+    async def get_by_user(self, user_id: int) -> list[ReferralReward]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM referral_rewards WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_reward(row) for row in rows]
+
+    async def get_unclaimed(self, user_id: int) -> list[ReferralReward]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM referral_rewards WHERE user_id = ? AND claimed = 0",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_reward(row) for row in rows]
+
+    async def mark_claimed(self, reward_id: int) -> None:
+        await self.conn.execute(
+            "UPDATE referral_rewards SET claimed = 1 WHERE id = ?", (reward_id,)
+        )
+        await self.conn.commit()
+
+    def _row_to_reward(self, row) -> ReferralReward:
+        return ReferralReward(
+            id=row["id"],
+            user_id=row["user_id"],
+            referred_user_id=row["referred_user_id"],
+            reward_type=row["reward_type"],
+            reward_value=row["reward_value"],
+            claimed=bool(row["claimed"]),
             created_at=row["created_at"],
         )
