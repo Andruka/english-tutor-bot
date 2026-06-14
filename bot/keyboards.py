@@ -50,35 +50,23 @@ def main_menu_kb(
     trial_available: bool = False,
     tier: str = "basic",
 ) -> InlineKeyboardMarkup:
-    """Главное меню — контекстно-зависимые кнопки."""
+    """Главное меню — 3 ряда по 2 кнопки + статус подписки."""
     buttons = [
         [
-            InlineKeyboardButton(text="💬 Новый диалог", callback_data="menu_dialogue"),
-            InlineKeyboardButton(text="🎤 Голосовое", callback_data="menu_voice"),
+            InlineKeyboardButton(text="💬 Диалог", callback_data="menu_dialogue"),
+            InlineKeyboardButton(text="🎤 Голос", callback_data="menu_voice"),
         ],
         [
-            InlineKeyboardButton(text="📖 Микро-урок", callback_data="menu_lesson"),
+            InlineKeyboardButton(text="📖 Урок", callback_data="menu_lesson"),
             InlineKeyboardButton(text="📚 Словарь", callback_data="menu_dictionary"),
         ],
         [
-            InlineKeyboardButton(text="🗺️ Learning Path", callback_data="menu_learnpath"),
-            InlineKeyboardButton(text="🔄 Новая сессия", callback_data="menu_new"),
-        ],
-        [
-            InlineKeyboardButton(text="📊 Статистика", callback_data="menu_stats"),
-            InlineKeyboardButton(text="🏆 Достижения", callback_data="menu_achievements"),
-        ],
-        [
-            InlineKeyboardButton(text="🌳 Навыки", callback_data="menu_skills"),
-            InlineKeyboardButton(text="🏅 Ранг", callback_data="menu_rank"),
-        ],
-        [
-            InlineKeyboardButton(text="🎯 Weekly Challenge", callback_data="menu_challenge"),
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data="menu_settings"),
+            InlineKeyboardButton(text="🏆 Прогресс", callback_data="menu_progress"),
+            InlineKeyboardButton(text="⚙️", callback_data="menu_settings"),
         ],
     ]
 
-    # Строка подписки
+    # Строка статуса подписки (только информация, без действия)
     sub_row = []
     if subscription_active:
         tier_icon = "💎" if tier == "pro" else "⭐"
@@ -88,21 +76,14 @@ def main_menu_kb(
                 callback_data="menu_subscribe",
             )
         )
-    else:
+    elif trial_available:
         sub_row.append(
-            InlineKeyboardButton(text="💎 Подписка", callback_data="menu_subscribe")
+            InlineKeyboardButton(text="🆓 Триал 3 дня", callback_data="menu_trial")
         )
-        if trial_available:
-            sub_row.append(
-                InlineKeyboardButton(text="🆓 Триал 3 дня", callback_data="menu_trial")
-            )
 
     if sub_row:
         buttons.append(sub_row)
 
-    buttons.append(
-        [InlineKeyboardButton(text="❓ Помощь", callback_data="menu_help")]
-    )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -221,16 +202,22 @@ def help_kb() -> InlineKeyboardMarkup:
 # ──────────────────────────── Настройки ────────────────────────────
 
 def settings_kb() -> InlineKeyboardMarkup:
-    """Клавиатура настроек."""
+    """Клавиатура настроек — расширенная."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="🎯 Уровень", callback_data="set_level"),
                 InlineKeyboardButton(text="📂 Тема", callback_data="set_topic"),
+                InlineKeyboardButton(text="🎭 Режим", callback_data="set_mode"),
             ],
             [
-                InlineKeyboardButton(text="🎭 Режим", callback_data="set_mode"),
+                InlineKeyboardButton(text="🗺️ Learning Path", callback_data="menu_learnpath"),
                 InlineKeyboardButton(text="🔔 Напоминания", callback_data="set_remind"),
+            ],
+            [
+                InlineKeyboardButton(text="⭐ Подписка", callback_data="menu_subscribe"),
+                InlineKeyboardButton(text="🆕 Новый диалог", callback_data="menu_new"),
+                InlineKeyboardButton(text="📖 Помощь", callback_data="menu_help"),
             ],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_main")],
         ]
@@ -373,17 +360,13 @@ async def menu_callback_handler(callback: CallbackQuery):
     elif data == "menu_learnpath":
         await callback.message.edit_text("🗺️ Напиши /learnpath для персонализированного маршрута!")
     elif data == "menu_new":
-        await callback.message.edit_text("🔄 Напиши /new для новой сессии!")
+        await callback.message.edit_text("🔄 Отправь /new для новой сессии диалога!")
+    elif data == "menu_progress":
+        await _show_progress(callback)
     elif data == "menu_stats":
         await callback.message.edit_text("📊 Напиши /stats для статистики!")
     elif data == "menu_achievements":
         await _show_achievements(callback)
-    elif data == "menu_skills":
-        await _show_progress(callback)
-    elif data == "menu_rank":
-        await _show_progress(callback)
-    elif data == "menu_challenge":
-        await _show_progress(callback)
     elif data == "menu_help":
         await callback.message.edit_text(
             "❓ <b>Помощь</b>\n\n"

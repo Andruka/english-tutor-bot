@@ -9,6 +9,7 @@ from aiogram.types import (
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from aiogram.filters import CommandStart, Command
 
@@ -89,10 +90,12 @@ async def cmd_start(message: Message):
         sub_active = existing.subscription
         tier = existing.subscription_tier if hasattr(existing, 'subscription_tier') else "basic"
         await message.answer(
-            f"👋 С возвращением, {username}!\n"
-            f"Твой уровень: {existing.level}\n"
-            f"Streak: {existing.streak} дней\n\n"
-            f"Напиши что-нибудь на английском, и я помогу тебе улучшить язык! ✨",
+            f"👋 С возвращением, {username}!",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        await message.answer(
+            f"Твой уровень: {existing.level} | Streak: {existing.streak} дней\n\n"
+            f"Я AI-репетитор. Выбери, что хочешь делать 👇",
             reply_markup=main_menu_kb(
                 subscription_active=sub_active,
                 trial_available=has_trial,

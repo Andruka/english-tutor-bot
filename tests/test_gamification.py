@@ -190,7 +190,8 @@ async def test_post_process_dialogue_awards_word_xp():
 @pytest.mark.asyncio
 async def test_skills_rank_and_challenge_commands_render_registered_user_dashboard():
     from bot.db import UserRepository, get_conn, init_db
-    from bot.handlers.dialogue import cmd_challenge, cmd_rank, cmd_skills
+    from bot.handlers.dialogue import cmd_challenge
+    from bot.handlers.gamification import cmd_progress
     from bot.services.progress_service import SkillProgressRepository
 
     db_path = tempfile.mktemp(suffix=".db")
@@ -203,14 +204,15 @@ async def test_skills_rank_and_challenge_commands_render_registered_user_dashboa
     message.from_user.id = 12345
     message.answer = AsyncMock()
 
-    await cmd_skills(message)
-    await cmd_rank(message)
+    # cmd_progress handles /progress, /achievements, /rank
+    message.text = "/rank"
+    await cmd_progress(message)
     await cmd_challenge(message)
 
     responses = [call.args[0] for call in message.answer.call_args_list]
-    assert "🌳 <b>Дерево навыков</b>" in responses[0]
+    assert "📊 <b>Дерево навыков</b>" in responses[0]
     assert "Speaking" in responses[0]
-    assert "🏅 <b>Твой ранг</b>" in responses[1]
-    assert "Bronze" in responses[1]
-    assert "🎯 <b>Weekly Challenge</b>" in responses[2]
-    assert "0/7" in responses[2]
+    assert "🏅 <b>Ранг:</b>" in responses[0]
+    assert "Bronze" in responses[0]
+    assert "🎯 <b>Weekly Challenge</b>" in responses[1]
+    assert "0/7" in responses[1]
