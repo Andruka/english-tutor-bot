@@ -18,7 +18,12 @@ from aiogram.types import (
     Message,
 )
 
-from bot.db import UserRepository, get_conn, Text
+from bot.db import (
+    User,
+    UserRepository,
+    get_conn,
+    Text,
+)
 from bot.services.text_library_service import (
     CATEGORIES,
     CATEGORY_LABELS,
@@ -75,6 +80,7 @@ def _build_text_summary(text: Text, progress=None) -> str:
 @router.message(Command("texts"))
 async def cmd_texts(message: Message):
     """Показывает главное меню библиотеки текстов."""
+    logger.info("CMD_TEXTS: user=%s", message.from_user.id)
     await _show_library_menu(message)
 
 
@@ -559,6 +565,60 @@ async def _show_user_progress(callback: CallbackQuery, service: TextLibraryServi
 
 
 # ── Команда /bookmarks ──────────────────────────────────────────────────
+
+@router.message(Command("setlevel"))
+async def cmd_setlevel(message: Message):
+    """Показывает меню выбора уровня английского."""
+    logger.info("CMD_SETLEVEL: user=%s", message.from_user.id)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🟢 A1 — Начальный", callback_data="sl_A1"),
+                InlineKeyboardButton(text="🟢 A2 — Элементарный", callback_data="sl_A2"),
+            ],
+            [
+                InlineKeyboardButton(text="🟡 B1 — Средний", callback_data="sl_B1"),
+                InlineKeyboardButton(text="🟡 B2 — Выше среднего", callback_data="sl_B2"),
+            ],
+            [
+                InlineKeyboardButton(text="🔴 C1 — Продвинутый", callback_data="sl_C1"),
+                InlineKeyboardButton(text="🔴 C2 — Владение", callback_data="sl_C2"),
+            ],
+            [
+                InlineKeyboardButton(text="🏠 Главное меню", callback_data="menu_main"),
+            ],
+        ]
+    )
+    conn = await get_conn()
+    repo = UserRepository(conn)
+    user = await repo.get(message.from_user.id)
+    current = get_level_label(user.level) if user else "Не установлен"
+    await message.answer(
+        f"📊 <b>Твой уровень английского</b>\n\n"
+        f"Текущий: {current}\n\n"
+        f"Выбери новый уровень:",
+        reply_markup=kb,
+    )
+    await conn.close()
+
+
+@router.callback_query(lambda c: c.data.startswith("sl_"))
+async def setlevel_callback(callback: CallbackQuery):
+    """Обрабатывает выбор уровня."""
+    level = callback.data[3:]  # sl_A1 -> A1
+    conn = await get_conn()
+    repo = UserRepository(conn)
+    user = await repo.set_level(callback.from_user.id, level)
+    await conn.close()
+    level_label = get_level_label(level)
+    await callback.answer(f"Уровень изменён на {level_label}!")
+    await callback.message.edit_text(
+        f"✅ <b>Уровень изменён!</b>\n\n"
+        f"Текущий уровень: {level_label}\n\n"
+        f"Теперь тексты в библиотеке будут подбираться под твой уровень. "
+        f"Используй /texts для начала чтения.",
+    )
+
 
 @router.message(Command("bookmarks"))
 async def cmd_bookmarks(message: Message):
