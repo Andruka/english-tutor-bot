@@ -129,7 +129,12 @@ async def post_process_dialogue(
     if branch_progress["points"] == 10:
         await AchievementRepository(conn).add(user_id, "skill_tree_started")
 
-    # Авто-сохранение новых слов в словарь
+    # +XP за каждое исправление (ветка grammar)
+    corrections = result.get("corrections", [])
+    if corrections:
+        await skill_repo.award_points(user_id, "grammar", 5 * len(corrections))
+
+    # Авто-сохранение новых слов в словарь + XP за каждое
     new_words = result.get("new_words", [])
     if new_words:
         dict_repo = DictionaryRepository(conn)
@@ -141,6 +146,8 @@ async def post_process_dialogue(
                 w.get("context", ""),
             )
             logger.info(f"Saved new word: {w.get('word')} for user {user_id}")
+        # XP за новые слова (ветка vocabulary)
+        await skill_repo.award_points(user_id, "vocabulary", 3 * len(new_words))
 
     # Сборка текстового ответа
     reply_text = await build_dialogue_reply(result, mode=mode)

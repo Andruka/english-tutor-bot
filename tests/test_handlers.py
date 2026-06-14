@@ -118,6 +118,99 @@ async def test_new_session(mock_answer):
     assert "Новая" in text or "сессия" in text.lower()
 
 
+@patch.object(Message, "answer", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_cmd_stats_with_data(mock_answer):
+    """/stats для пользователя с диалогами, навыками и словами."""
+    from bot.handlers.dialogue import cmd_stats
+    from bot.db import UserRepository, init_db, DictionaryRepository, DialogueRepository
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    import bot.db as bdb
+
+    old_db_path = bdb._db_path
+    bdb._db_path = db_path
+    await init_db(db_path)
+
+    try:
+        conn = await bdb.get_conn()
+        repo = UserRepository(conn)
+        await repo.create(user_id=202, level="B1", username="stats_user")
+        await conn.close()
+
+        conn = await bdb.get_conn()
+        dia_repo = DialogueRepository(conn)
+        await dia_repo.save(202, "Hello", "Hi there!", rating=4)
+        await dia_repo.save(202, "How are you?", "I'm fine", rating=5)
+        dict_repo = DictionaryRepository(conn)
+        await dict_repo.add_word(202, "hello", "привет")
+        await dict_repo.add_word(202, "world", "мир")
+        from bot.services.progress_service import SkillProgressRepository
+
+        skill_repo = SkillProgressRepository(conn)
+        await skill_repo.award_points(202, "vocabulary", 30)
+        await skill_repo.award_points(202, "grammar", 20)
+        await conn.close()
+
+        msg = make_message("/stats", user_id=202)
+        await cmd_stats(msg)
+        mock_answer.assert_called_once()
+        text = mock_answer.call_args[0][0]
+        assert "Прогресс-панель" in text
+        assert "Streak" in text
+        assert "Диалогов" in text
+        assert "Слов" in text
+        assert "Средняя оценка" in text
+        assert "Навыки" in text
+        assert "Достижения" in text
+    finally:
+        bdb._db_path = old_db_path
+        os.unlink(db_path)
+
+
+@patch.object(Message, "answer", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_cmd_stats_shows_avg_rating(mock_answer):
+    """/stats показывает среднюю оценку."""
+    from bot.handlers.dialogue import cmd_stats
+    from bot.db import UserRepository, init_db, DialogueRepository
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    import bot.db as bdb
+
+    old_db_path = bdb._db_path
+    bdb._db_path = db_path
+    await init_db(db_path)
+
+    try:
+        conn = await bdb.get_conn()
+        repo = UserRepository(conn)
+        await repo.create(user_id=203, level="A2", username="rating_user")
+        await conn.close()
+
+        conn = await bdb.get_conn()
+        dia_repo = DialogueRepository(conn)
+        await dia_repo.save(203, "Hi", "Hello", rating=5)
+        await dia_repo.save(203, "Bye", "Goodbye", rating=3)
+        await conn.close()
+
+        msg = make_message("/stats", user_id=203)
+        await cmd_stats(msg)
+        mock_answer.assert_called_once()
+        text = mock_answer.call_args[0][0]
+        assert "Средняя оценка" in text
+        assert "4" in text  # (5+3)/2 = 4.0
+    finally:
+        bdb._db_path = old_db_path
+        os.unlink(db_path)
+
+
 @pytest.mark.asyncio
 async def test_topic_selection():
     """Выбор темы через текст в handle_text_dialogue."""

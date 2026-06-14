@@ -378,6 +378,30 @@ async def cmd_stats(message: Message):
     dict_repo = DictionaryRepository(conn)
     word_count = await dict_repo.count(user_id)
 
+    # Средняя оценка и динамика за 7 дней
+    from bot.db import DialogueRepository
+
+    dialogue_repo = DialogueRepository(conn)
+    weekly = await dialogue_repo.get_weekly_stats(user_id)
+    total_dialogue_count = dashboard["total_dialogues"]
+    avg_rating_line = ""
+    weekly_line = ""
+    if total_dialogue_count > 0:
+        # Средняя оценка за всё время
+        from datetime import datetime, timezone, timedelta
+
+        cursor = await conn.execute(
+            "SELECT AVG(rating) FROM dialogues WHERE user_id = ?", (user_id,)
+        )
+        row = await cursor.fetchone()
+        avg_all = round(row[0], 1) if row and row[0] else 0.0
+        avg_rating_line = f"⭐ <b>Средняя оценка</b>: {avg_all}/5  |  "
+    if weekly["count"] > 0:
+        weekly_line = (
+            f"📈 <b>За 7 дней</b>: {weekly['count']} диалогов"
+            f"{f', ср. оценка {weekly['avg_rating']}/5' if weekly['avg_rating'] else ''}"
+        )
+
     total_xp = sum(b["points"] for b in dashboard["skill_tree"])
     rank = dashboard["rank"]
 
@@ -429,8 +453,14 @@ async def cmd_stats(message: Message):
         f"📊 <b>Прогресс-панель</b>\n\n"
         f"🏅 <b>{rank}</b>\n"
         f"{xp_line}\n\n"
-        f"🔥 <b>Streak</b>: {user.streak} дн.  |  💬 <b>Диалогов</b>: {dashboard['total_dialogues']}  |  "
-        f"📚 <b>Слов</b>: {word_count}\n\n"
+        f"🔥 <b>Streak</b>: {user.streak} дн.  |  💬 <b>Диалогов</b>: {total_dialogue_count}  |  "
+        f"📚 <b>Слов</b>: {word_count}  |  {avg_rating_line}\n"
+    )
+    if weekly_line:
+        text += f"{weekly_line}\n\n"
+    else:
+        text += "\n"
+    text += (
         f"🌳 <b>Навыки</b>\n" + "\n".join(skill_lines) + "\n\n"
         f"🏆 <b>Достижения</b>: {dashboard['achievement_count']} / 11\n"
     )

@@ -398,6 +398,23 @@ class DialogueRepository:
         row = await cursor.fetchone()
         return row[0] if row else 0
 
+    async def get_weekly_stats(self, user_id: int) -> dict:
+        """Статистика за последние 7 дней: количество диалогов и средняя оценка."""
+        from datetime import datetime, timezone, timedelta
+
+        week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        cursor = await self.conn.execute(
+            """SELECT COUNT(*) as cnt, AVG(rating) as avg_rating
+               FROM dialogues
+               WHERE user_id = ? AND timestamp >= ?""",
+            (user_id, week_ago),
+        )
+        row = await cursor.fetchone()
+        return {
+            "count": row[0] if row else 0,
+            "avg_rating": round(row[1], 1) if row and row[1] else 0.0,
+        }
+
     async def count_corrections(self, user_id: int) -> int:
         """Суммарное количество исправлений в диалогах пользователя."""
         cursor = await self.conn.execute(

@@ -13,6 +13,7 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.db import get_conn, DictionaryRepository
+from bot.services.progress_service import SkillProgressRepository
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -92,7 +93,9 @@ async def cb_known(callback: CallbackQuery):
     conn = await get_conn()
     repo = DictionaryRepository(conn)
     await repo.mark_reviewed(word_id, quality=3)
-    await callback.answer("✅ Отлично! Слово запомнено.")
+    # +2 XP за успешное повторение
+    await SkillProgressRepository(conn).award_points(callback.from_user.id, "vocabulary", 2)
+    await callback.answer("✅ Отлично! Слово запомнено. (+2 XP)")
     await _show_next_or_done(callback, conn, repo)
 
 
@@ -102,7 +105,9 @@ async def cb_hard(callback: CallbackQuery):
     conn = await get_conn()
     repo = DictionaryRepository(conn)
     await repo.mark_reviewed(word_id, quality=1)
-    await callback.answer("🔁 Повторим позже!")
+    # +1 XP за старание
+    await SkillProgressRepository(conn).award_points(callback.from_user.id, "vocabulary", 1)
+    await callback.answer("🔁 Повторим позже! (+1 XP)")
     await _show_next_or_done(callback, conn, repo)
 
 
@@ -185,7 +190,9 @@ async def cmd_add_word(message: Message):
     entry = await repo.add_word(message.from_user.id, word, translation)
 
     if entry:
-        await message.answer(f"✅ <b>{word}</b> — {translation} добавлено в словарь!")
+        # +3 XP за новое слово (ветка vocabulary)
+        await SkillProgressRepository(conn).award_points(message.from_user.id, "vocabulary", 3)
+        await message.answer(f"✅ <b>{word}</b> — {translation} добавлено в словарь! (+3 XP 🎯)")
     else:
         await message.answer(f"ℹ️ Слово <b>{word}</b> уже есть в словаре.")
 
