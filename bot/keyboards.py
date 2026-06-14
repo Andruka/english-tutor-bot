@@ -3,6 +3,45 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
+from bot.handlers.gamification import (
+    build_achievements_text,
+    build_progress_text,
+    get_common_data,
+)
+
+# ── Keyboard imports (must be here to avoid circular imports) ────────────
+from bot.handlers.gamification import progress_keyboard, achievements_keyboard
+
+
+async def _show_progress(callback: "CallbackQuery") -> None:
+    """Показывает дашборд прогресса (ранг + дерево навыков + челлендж)."""
+    data = await get_common_data(callback.from_user.id)
+    if data is None:
+        await callback.message.edit_text("❓ Сначала зарегистрируйся — отправь /start")
+        return
+    text = build_progress_text(
+        user_level=data["user"].level,
+        streak=data["user"].streak,
+        dialogues_today=data["user"].dialogues_today,
+        total_dialogues=data["total_dialogues"],
+        skill_tree=data["skill_tree"],
+        rank_name=data["rank"],
+        weekly_challenge=data["weekly_challenge"],
+        achievement_count=data["achievement_count"],
+        total_achievements=data["total_achievements"],
+    )
+    await callback.message.edit_text(text, reply_markup=progress_keyboard().as_markup())
+
+
+async def _show_achievements(callback: "CallbackQuery") -> None:
+    """Показывает список достижений."""
+    data = await get_common_data(callback.from_user.id)
+    if data is None:
+        await callback.message.edit_text("❓ Сначала зарегистрируйся — отправь /start")
+        return
+    text = build_achievements_text(data["achievements"], data["achievement_count"])
+    await callback.message.edit_text(text, reply_markup=achievements_keyboard().as_markup())
+
 
 # ──────────────────────────── Главное меню ────────────────────────────
 
@@ -338,13 +377,13 @@ async def menu_callback_handler(callback: CallbackQuery):
     elif data == "menu_stats":
         await callback.message.edit_text("📊 Напиши /stats для статистики!")
     elif data == "menu_achievements":
-        await callback.message.edit_text("🏆 Напиши /achievements!")
+        await _show_achievements(callback)
     elif data == "menu_skills":
-        await callback.message.edit_text("🌳 Напиши /skills для дерева навыков!")
+        await _show_progress(callback)
     elif data == "menu_rank":
-        await callback.message.edit_text("🏅 Напиши /rank!")
+        await _show_progress(callback)
     elif data == "menu_challenge":
-        await callback.message.edit_text("🎯 Напиши /challenge!")
+        await _show_progress(callback)
     elif data == "menu_help":
         await callback.message.edit_text(
             "❓ <b>Помощь</b>\n\n"

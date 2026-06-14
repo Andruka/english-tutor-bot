@@ -2,10 +2,18 @@
 
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    Message,
+    ReplyKeyboardMarkup,
+)
 from aiogram.filters import CommandStart, Command
 
 from bot.db import UserRepository, get_conn
+from bot.handlers.placement import _start_new_test
 from bot.keyboards import main_menu_kb
 
 router = Router()
@@ -31,6 +39,26 @@ def level_keyboard() -> ReplyKeyboardMarkup:
         keyboard=buttons,
         resize_keyboard=True,
         one_time_keyboard=True,
+    )
+
+
+def onboarding_keyboard() -> InlineKeyboardMarkup:
+    """Inline-клавиатура выбора пути onboarding."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🎯 Пройти тест",
+                    callback_data="onboarding_start_placement",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✋ Выбрать уровень сам",
+                    callback_data="onboarding_choose_level",
+                )
+            ],
+        ]
     )
 
 
@@ -80,7 +108,24 @@ async def cmd_start(message: Message):
         f"🎯 Практиковать разговорный английский\n"
         f"✏️ Исправлять ошибки\n"
         f"📈 Отслеживать прогресс\n\n"
-        f"Выбери свой уровень:",
+        f"Выбери, как определить твой уровень:",
+        reply_markup=onboarding_keyboard(),
+    )
+
+
+@router.callback_query(F.data == "onboarding_start_placement")
+async def cb_onboarding_start_placement(callback: CallbackQuery):
+    """Запустить placement test из onboarding."""
+    await callback.answer()
+    await _start_new_test(callback.from_user.id, callback.message)
+
+
+@router.callback_query(F.data == "onboarding_choose_level")
+async def cb_onboarding_choose_level(callback: CallbackQuery):
+    """Показать текущую клавиатуру выбора уровня из onboarding."""
+    await callback.answer()
+    await callback.message.answer(
+        "Выбери свой уровень:",
         reply_markup=level_keyboard(),
     )
 

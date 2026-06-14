@@ -4,6 +4,7 @@ Message в aiogram 3 — frozen Pydantic, поэтому mock через patch.o
 """
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from aiogram.types import Message, User, Chat
 
@@ -57,6 +58,81 @@ async def test_cmd_start_new_user():
     finally:
         bdb._db_path = old_db_path
         os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_new_user_offers_placement_test_or_manual_level_choice():
+    """Новый пользователь в onboarding видит inline-выбор: тест или ручной уровень."""
+    from bot.handlers.start import cmd_start
+    from bot.db import init_db
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    import bot.db as bdb
+
+    old_db_path = bdb._db_path
+    bdb._db_path = db_path
+    await init_db(db_path)
+
+    try:
+        with patch.object(Message, "answer", new_callable=AsyncMock) as mock_answer:
+            msg = make_message("/start", user_id=101)
+            await cmd_start(msg)
+
+            mock_answer.assert_called_once()
+            reply_markup = mock_answer.call_args.kwargs["reply_markup"]
+            rows = reply_markup.inline_keyboard
+            assert rows[0][0].text == "🎯 Пройти тест"
+            assert rows[0][0].callback_data == "onboarding_start_placement"
+            assert rows[1][0].text == "✋ Выбрать уровень сам"
+            assert rows[1][0].callback_data == "onboarding_choose_level"
+    finally:
+        bdb._db_path = old_db_path
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_onboarding_choose_level_shows_existing_level_keyboard():
+    """Inline-выбор ручного уровня открывает текущую reply-клавиатуру уровней."""
+    from bot.handlers.start import cb_onboarding_choose_level
+
+    callback = SimpleNamespace(
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+
+    await cb_onboarding_choose_level(callback)
+
+    callback.answer.assert_awaited_once()
+    callback.message.answer.assert_awaited_once()
+    reply_markup = callback.message.answer.await_args.kwargs["reply_markup"]
+    assert [row[0].text for row in reply_markup.keyboard] == [
+        "A1",
+        "A2",
+        "B1",
+        "B2",
+        "C1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_onboarding_start_placement_delegates_to_placement_handler():
+    """Inline-выбор теста запускает placement flow для пользователя callback."""
+    from bot.handlers import start
+
+    callback = SimpleNamespace(
+        from_user=SimpleNamespace(id=202),
+        message=SimpleNamespace(message_id=33),
+        answer=AsyncMock(),
+    )
+
+    with patch.object(start, "_start_new_test", new_callable=AsyncMock) as mock_start_test:
+        await start.cb_onboarding_start_placement(callback)
+
+    callback.answer.assert_awaited_once()
+    mock_start_test.assert_awaited_once_with(202, callback.message)
 
 
 @patch.object(Message, "answer", new_callable=AsyncMock)

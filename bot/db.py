@@ -210,6 +210,21 @@ async def init_db(db_path: str = None):
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             );
         """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS placement_test_results (
+                result_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                answers_json TEXT NOT NULL,
+                total_questions INTEGER NOT NULL,
+                correct_answers INTEGER NOT NULL,
+                score REAL NOT NULL,
+                determined_level TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+
         # Идемпотентная миграция — subscription_tier для существующих БД
         try:
             await conn.execute(
