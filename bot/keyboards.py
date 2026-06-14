@@ -350,7 +350,12 @@ async def menu_callback_handler(callback: CallbackQuery):
         )
     elif data == "menu_dialogue":
         await callback.message.edit_text(
-            "💬 Напиши что-нибудь на английском, и я помогу! ✨"
+            "💬 <b>Режим диалога</b>\n\nНапиши что-нибудь на английском, и я помогу! ✨",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 Меню", callback_data="menu_main")]
+                ]
+            ),
         )
     elif data == "menu_voice":
         await callback.message.edit_text(

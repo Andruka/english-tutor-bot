@@ -319,6 +319,7 @@ async def _show_question(message: Message, user_id: int, edit: bool = False):
         return
 
     question = questions[q_idx]
+    text_id = state.get("text_id", 0)
     lines = [
         f"❓ <b>Вопрос {q_idx + 1}/{len(questions)}</b>",
         "",
@@ -337,7 +338,6 @@ async def _show_question(message: Message, user_id: int, edit: bool = False):
     buttons.append([InlineKeyboardButton(text="🏠 Библиотека", callback_data="tl_menu")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    text_id = state.get("text_id", 0)
 
     # Удаляем старый callback_data с text_id для правильного формирования нажатия на вопрос
     if edit:
