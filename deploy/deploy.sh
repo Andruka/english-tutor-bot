@@ -12,6 +12,17 @@ echo "🚀 Deploy english-tutor-bot → ${VDS_USER}@${VDS_HOST}"
 
 cd "$LOCAL_DIR"
 
+# --- 0. Backup .env на VDS ---
+echo "💾 Backing up .env..."
+ssh -i "$SSH_KEY" "${VDS_USER}@${VDS_HOST}" "
+  if [ -f ${REMOTE_DIR}/.env ]; then
+    cp ${REMOTE_DIR}/.env /tmp/${REMOTE_DIR}_env_backup
+    echo '✅ .env saved'
+  else
+    echo '⚠️  No .env to backup'
+  fi
+"
+
 # --- 1. Transfer files (tar | ssh pipe) ---
 echo "📦 Transferring files..."
 tar cz \
@@ -25,6 +36,18 @@ tar cz \
 ssh -i "$SSH_KEY" "${VDS_USER}@${VDS_HOST}" "rm -rf ${REMOTE_DIR} && mkdir -p ${REMOTE_DIR} && tar xz -C ${REMOTE_DIR}"
 
 echo "✅ Files transferred."
+
+# --- 1b. Restore .env из backup ---
+echo "♻️ Restoring .env..."
+ssh -i "$SSH_KEY" "${VDS_USER}@${VDS_HOST}" "
+  if [ -f /tmp/${REMOTE_DIR}_env_backup ]; then
+    cp /tmp/${REMOTE_DIR}_env_backup ${REMOTE_DIR}/.env
+    rm -f /tmp/${REMOTE_DIR}_env_backup
+    echo '✅ .env restored'
+  else
+    echo '⚠️  No backup to restore — create .env from .env.example'
+  fi
+"
 
 # --- 2. Install dependencies ---
 echo "📦 Installing dependencies..."
@@ -58,10 +81,10 @@ ssh -i "$SSH_KEY" "${VDS_USER}@${VDS_HOST}" "
 
 echo "✅ Imports verified."
 
-# --- 5. Restart message ---
+# --- 5. Restart ---
 echo ""
 echo "🎉 Deploy complete! Restart the bot:"
-echo "   sudo systemctl restart english-tutor-bot"
+echo "   systemctl --user restart english-tutor-bot"
 echo ""
 echo "Or check logs:"
-echo "   sudo journalctl -u english-tutor-bot -n 30 --no-pager"
+echo "   journalctl --user -u english-tutor-bot -n 30 --no-pager"
