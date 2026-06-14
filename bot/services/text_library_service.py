@@ -425,6 +425,8 @@ class TextLibraryService:
 
     def split_paragraphs(self, text: str) -> list[str]:
         """Разбивает текст на абзацы."""
+        if not text or not text.strip():
+            return []
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
         return paragraphs or [text]
 
