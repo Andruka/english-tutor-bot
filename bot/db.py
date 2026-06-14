@@ -61,6 +61,19 @@ async def init_db(db_path: str = None):
             );
         """)
 
+        # Идемпотентная миграция: добавляем колонки, которых может не быть в старых БД.
+        cursor = await conn.execute("PRAGMA table_info(users)")
+        existing_cols = {row[1] for row in await cursor.fetchall()}
+        user_migrations = {
+            "trial_taken": "INTEGER DEFAULT 0",
+            "subscription_tier": "TEXT DEFAULT 'basic'",
+        }
+        for col_name, definition in user_migrations.items():
+            if col_name not in existing_cols:
+                await conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {definition}"
+                )
+
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 dialogue_id INTEGER PRIMARY KEY AUTOINCREMENT,
