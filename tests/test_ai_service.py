@@ -166,3 +166,53 @@ async def test_parse_response_nested_json_in_reply():
 
     assert result["reply"] == "Use {{template}} syntax like {this} in your response"
     assert result["rating"] == 3
+
+
+def test_build_system_prompt_uses_distinct_dialogue_modes():
+    """K011: режимы диалога должны давать разные системные промпты."""
+    from bot.services.ai_service import (
+        MODE_FREE_TALK,
+        MODE_GRAMMAR_FOCUS,
+        MODE_ROLE_PLAY,
+        build_system_prompt,
+    )
+
+    free_talk = build_system_prompt("A2", "travel", mode=MODE_FREE_TALK)
+    role_play = build_system_prompt(
+        "A2",
+        "travel",
+        mode=MODE_ROLE_PLAY,
+        scenario="You are a hotel receptionist. The user is checking in.",
+    )
+    grammar_focus = build_system_prompt(
+        "A2",
+        "travel",
+        mode=MODE_GRAMMAR_FOCUS,
+        grammar_focus="Present Perfect",
+    )
+
+    assert "Mode: FREE TALK" in free_talk
+    assert "Priority: FLUENCY" in free_talk
+    assert "Mode: ROLE PLAY" in role_play
+    assert "hotel receptionist" in role_play
+    assert "Mode: GRAMMAR FOCUS" in grammar_focus
+    assert "Present Perfect" in grammar_focus
+
+
+def test_ai_tutor_set_mode_clears_history_and_rebuilds_prompt():
+    """K011: переключение режима очищает историю и меняет промпт."""
+    from bot.services.ai_service import AITutor, MODE_FREE_TALK, MODE_ROLE_PLAY
+
+    tutor = AITutor(level="B1", api_key="test_key", topic="travel", mode=MODE_FREE_TALK)
+    tutor.messages.append({"role": "user", "content": "Old conversation"})
+    tutor.messages.append({"role": "assistant", "content": "Old reply"})
+
+    tutor.set_mode(
+        MODE_ROLE_PLAY,
+        scenario="You are an airport check-in agent. The user is a passenger.",
+    )
+
+    assert len(tutor.messages) == 1
+    assert tutor.messages[0]["role"] == "system"
+    assert "Mode: ROLE PLAY" in tutor.messages[0]["content"]
+    assert "airport check-in agent" in tutor.messages[0]["content"]

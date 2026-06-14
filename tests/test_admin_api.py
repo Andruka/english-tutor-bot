@@ -210,7 +210,9 @@ async def test_admin_can_inspect_user_details_by_id(tmp_path):
             "dialogues_today": 0,
             "last_dialogue_date": None,
             "subscription": True,
+            "subscription_tier": "premium",
             "subscription_expiry": "2030-01-01T00:00:00+00:00",
+            "trial_taken": False,
             "streak": 0,
             "created_at": payload["profile"]["created_at"],
         }

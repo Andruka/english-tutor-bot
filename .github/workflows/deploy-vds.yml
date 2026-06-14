@@ -49,6 +49,7 @@ jobs:
   deploy:
     name: ${{ inputs.operation }} ${{ inputs.environment }}
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     timeout-minutes: 20
     env:
       SERVICE_NAME: ${{ vars.SERVICE_NAME || 'english-tutor-bot' }}

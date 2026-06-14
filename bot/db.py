@@ -16,7 +16,9 @@ class User:
     dialogues_today: int = 0
     last_dialogue_date: Optional[date] = None
     subscription: bool = False
-    subscription_expiry: Optional[str] = None  # ISO datetime
+    subscription_tier: str = "basic"
+    subscription_expiry: Optional[str] = None
+    trial_taken: bool = False
     streak: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -53,6 +55,7 @@ async def init_db(db_path: str = None):
                 last_dialogue_date TEXT,
                 subscription INTEGER DEFAULT 0,
                 subscription_expiry TEXT,
+                trial_taken INTEGER DEFAULT 0,
                 streak INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -78,6 +81,32 @@ async def init_db(db_path: str = None):
                 achievement_id TEXT NOT NULL,
                 earned_at TEXT NOT NULL,
                 PRIMARY KEY (user_id, achievement_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS skill_progress (
+                user_id INTEGER NOT NULL,
+                branch_id TEXT NOT NULL,
+                points INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, branch_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS weekly_challenges (
+                user_id INTEGER NOT NULL,
+                week_id TEXT NOT NULL,
+                goal INTEGER NOT NULL DEFAULT 7,
+                progress INTEGER NOT NULL DEFAULT 0,
+                completed INTEGER NOT NULL DEFAULT 0,
+                reward_achievement_id TEXT DEFAULT 'weekly_challenge',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, week_id),
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             );
         """)
@@ -125,6 +154,56 @@ async def init_db(db_path: str = None):
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             );
         """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS micro_lessons (
+                lesson_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                topic TEXT NOT NULL,
+                explanation TEXT NOT NULL,
+                examples TEXT NOT NULL DEFAULT '[]',
+                exercise TEXT NOT NULL,
+                answer_key TEXT NOT NULL,
+                source_errors TEXT NOT NULL DEFAULT '[]',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS micro_lesson_attempts (
+                attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                answer TEXT NOT NULL,
+                is_correct INTEGER NOT NULL DEFAULT 0,
+                feedback TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (lesson_id) REFERENCES micro_lessons(lesson_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pronunciation_feedback (
+                feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                transcript TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                problem_sounds TEXT NOT NULL DEFAULT '[]',
+                tips TEXT NOT NULL DEFAULT '[]',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            );
+        """)
+        # Идемпотентная миграция — subscription_tier для существующих БД
+        try:
+            await conn.execute(
+                "ALTER TABLE users ADD COLUMN subscription_tier TEXT DEFAULT 'premium'"
+            )
+        except Exception:
+            pass  # колонка уже существует
 
         await conn.commit()
 
@@ -206,14 +285,28 @@ class UserRepository:
         await self.conn.commit()
 
     async def set_subscription(
-        self, user_id: int, active: bool, expiry: str | None = None
+        self, user_id: int, active: bool, expiry: str | None = None, tier: str = "premium"
     ):
         """Установка подписки пользователю."""
         await self.conn.execute(
-            "UPDATE users SET subscription = ?, subscription_expiry = ? WHERE user_id = ?",
-            (1 if active else 0, expiry, user_id),
+            "UPDATE users SET subscription = ?, subscription_expiry = ?, subscription_tier = ?, trial_taken = 0 WHERE user_id = ?",
+            (1 if active else 0, expiry, tier if active else "basic", user_id),
         )
         await self.conn.commit()
+
+    async def set_trial(self, user_id: int) -> User:
+        """Активирует 3-дневный триал Premium."""
+        from datetime import timedelta
+
+        expiry = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+        await self.conn.execute(
+            "UPDATE users SET subscription = 1, subscription_tier = 'premium', subscription_expiry = ?, trial_taken = 1 WHERE user_id = ?",
+            (expiry, user_id),
+        )
+        await self.conn.commit()
+        user = await self.get(user_id)
+        assert user is not None, f"User {user_id} not found after trial activation"
+        return user
 
     async def update_streak(self, user_id: int):
         """Обновление streak — если последний диалог был вчера, увеличиваем."""
@@ -253,7 +346,9 @@ class UserRepository:
                 else None
             ),
             subscription=bool(row["subscription"]),
+            subscription_tier=row["subscription_tier"] if "subscription_tier" in row.keys() else "basic",
             subscription_expiry=row["subscription_expiry"],
+            trial_taken=bool(row["trial_taken"]),
             streak=row["streak"] or 0,
             created_at=datetime.fromisoformat(row["created_at"]),
         )
@@ -618,4 +713,198 @@ class ReminderSettingsRepository:
             digest_enabled=bool(row["digest_enabled"]),
             digest_time=row["digest_time"] or "21:00",
             last_digest_date=row["last_digest_date"],
+        )
+
+
+@dataclass
+class PronunciationFeedback:
+    feedback_id: int = 0
+    user_id: int = 0
+    transcript: str = ""
+    score: int = 0
+    problem_sounds: list[str] = field(default_factory=list)
+    tips: list[str] = field(default_factory=list)
+    created_at: Optional[str] = None
+
+
+class PronunciationFeedbackRepository:
+    """Repository for persisted pronunciation scoring history."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def create(self, feedback: PronunciationFeedback) -> PronunciationFeedback:
+        cursor = await self.conn.execute(
+            """INSERT INTO pronunciation_feedback
+               (user_id, transcript, score, problem_sounds, tips)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                feedback.user_id,
+                feedback.transcript,
+                feedback.score,
+                json.dumps(feedback.problem_sounds, ensure_ascii=False),
+                json.dumps(feedback.tips, ensure_ascii=False),
+            ),
+        )
+        await self.conn.commit()
+        created = await self.get(cursor.lastrowid)
+        if created is None:
+            raise RuntimeError("Pronunciation feedback was not persisted")
+        return created
+
+    async def get(self, feedback_id: int) -> Optional[PronunciationFeedback]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM pronunciation_feedback WHERE feedback_id = ?",
+            (feedback_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_feedback(row) if row else None
+
+    async def get_latest(self, user_id: int) -> Optional[PronunciationFeedback]:
+        cursor = await self.conn.execute(
+            """SELECT * FROM pronunciation_feedback
+               WHERE user_id = ? ORDER BY feedback_id DESC LIMIT 1""",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_feedback(row) if row else None
+
+    def _row_to_feedback(self, row) -> PronunciationFeedback:
+        return PronunciationFeedback(
+            feedback_id=row["feedback_id"],
+            user_id=row["user_id"],
+            transcript=row["transcript"],
+            score=row["score"],
+            problem_sounds=json.loads(row["problem_sounds"] or "[]"),
+            tips=json.loads(row["tips"] or "[]"),
+            created_at=row["created_at"],
+        )
+
+
+@dataclass
+class MicroLesson:
+    lesson_id: int = 0
+    user_id: int = 0
+    topic: str = ""
+    explanation: str = ""
+    examples: list[str] = field(default_factory=list)
+    exercise: str = ""
+    answer_key: str = ""
+    source_errors: list[dict] = field(default_factory=list)
+    is_active: bool = True
+    created_at: Optional[str] = None
+
+
+@dataclass
+class MicroLessonAttempt:
+    attempt_id: int = 0
+    lesson_id: int = 0
+    user_id: int = 0
+    answer: str = ""
+    is_correct: bool = False
+    feedback: str = ""
+    created_at: Optional[str] = None
+
+
+class MicroLessonRepository:
+    """Repository for 3-minute micro-lessons generated from user mistakes."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def create(
+        self,
+        user_id: int,
+        topic: str,
+        explanation: str,
+        examples: list[str],
+        exercise: str,
+        answer_key: str,
+        source_errors: list[dict] | None = None,
+    ) -> MicroLesson:
+        await self.conn.execute(
+            "UPDATE micro_lessons SET is_active = 0 WHERE user_id = ?",
+            (user_id,),
+        )
+        cursor = await self.conn.execute(
+            """INSERT INTO micro_lessons
+               (user_id, topic, explanation, examples, exercise, answer_key, source_errors)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                topic,
+                explanation,
+                json.dumps(examples, ensure_ascii=False),
+                exercise,
+                answer_key,
+                json.dumps(source_errors or [], ensure_ascii=False),
+            ),
+        )
+        await self.conn.commit()
+        return await self.get(cursor.lastrowid)
+
+    async def get(self, lesson_id: int) -> Optional[MicroLesson]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM micro_lessons WHERE lesson_id = ?", (lesson_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_lesson(row) if row else None
+
+    async def get_latest_active(self, user_id: int) -> Optional[MicroLesson]:
+        cursor = await self.conn.execute(
+            """SELECT * FROM micro_lessons
+               WHERE user_id = ? AND is_active = 1
+               ORDER BY lesson_id DESC LIMIT 1""",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_lesson(row) if row else None
+
+    async def save_attempt(
+        self,
+        user_id: int,
+        lesson_id: int,
+        answer: str,
+        is_correct: bool,
+        feedback: str,
+    ) -> MicroLessonAttempt:
+        cursor = await self.conn.execute(
+            """INSERT INTO micro_lesson_attempts
+               (lesson_id, user_id, answer, is_correct, feedback)
+               VALUES (?, ?, ?, ?, ?)""",
+            (lesson_id, user_id, answer, 1 if is_correct else 0, feedback),
+        )
+        await self.conn.commit()
+        return await self.get_attempt(cursor.lastrowid)
+
+    async def get_attempt(self, attempt_id: int) -> Optional[MicroLessonAttempt]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM micro_lesson_attempts WHERE attempt_id = ?", (attempt_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_attempt(row) if row else None
+
+    def _row_to_lesson(self, row) -> MicroLesson:
+        return MicroLesson(
+            lesson_id=row["lesson_id"],
+            user_id=row["user_id"],
+            topic=row["topic"],
+            explanation=row["explanation"],
+            examples=json.loads(row["examples"] or "[]"),
+            exercise=row["exercise"],
+            answer_key=row["answer_key"],
+            source_errors=json.loads(row["source_errors"] or "[]"),
+            is_active=bool(row["is_active"]),
+            created_at=row["created_at"],
+        )
+
+    def _row_to_attempt(self, row) -> MicroLessonAttempt:
+        return MicroLessonAttempt(
+            attempt_id=row["attempt_id"],
+            lesson_id=row["lesson_id"],
+            user_id=row["user_id"],
+            answer=row["answer"],
+            is_correct=bool(row["is_correct"]),
+            feedback=row["feedback"],
+            created_at=row["created_at"],
         )

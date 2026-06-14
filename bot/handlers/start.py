@@ -6,6 +6,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart, Command
 
 from bot.db import UserRepository, get_conn
+from bot.keyboards import main_menu_kb
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -56,11 +57,19 @@ async def cmd_start(message: Message):
 
     existing = await repo.get(user_id)
     if existing:
+        has_trial = not existing.trial_taken and not existing.subscription
+        sub_active = existing.subscription
+        tier = existing.subscription_tier if hasattr(existing, 'subscription_tier') else "basic"
         await message.answer(
             f"👋 С возвращением, {username}!\n"
             f"Твой уровень: {existing.level}\n"
             f"Streak: {existing.streak} дней\n\n"
-            f"Напиши что-нибудь на английском, и я помогу тебе улучшить язык! ✨"
+            f"Напиши что-нибудь на английском, и я помогу тебе улучшить язык! ✨",
+            reply_markup=main_menu_kb(
+                subscription_active=sub_active,
+                trial_available=has_trial,
+                tier=tier,
+            ),
         )
         return
 
@@ -111,6 +120,13 @@ async def cmd_help(message: Message):
         "/start — начать / вернуться\n"
         "/level — сменить уровень\n"
         "/topic — сменить тему урока\n"
+        "/mode — выбрать режим диалога\n"
+        "/learnpath — следующий урок по истории ошибок\n"
+        "/skills — дерево навыков\n"
+        "/rank — текущий ранг\n"
+        "/challenge — weekly challenge\n"
+        "/achievements — награды и ачивки\n"
+        "/stats — статистика\n"
         "/help — эта справка\n\n"
         "Просто напиши что-нибудь на английском или отправь голосовое сообщение!"
     )

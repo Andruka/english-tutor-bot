@@ -5,9 +5,10 @@ import contextlib
 import logging
 import os
 import signal
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.filters import Command
 
 from bot.handlers import (
     start,
@@ -31,6 +32,7 @@ from bot.services.subscription_service import set_provider_token
 from bot.services.subscription_cron import start_subscription_checker
 from bot.services.reminder_service import ReminderService
 from bot.services.daily_digest_service import DailyDigestSender
+from bot.keyboards import main_menu_kb, menu_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -151,6 +153,7 @@ async def main():
     dp.include_router(dictionary.router)
     dp.include_router(exercise.router)  # до dialogue — для HasActiveTranslationExercise
     dp.include_router(dialogue.router)
+    dp.include_router(menu_router)
 
     # Запускаем фоновую проверку истекающих подписок
     checker_task = start_subscription_checker(bot=bot, interval=3600, notify=True)
