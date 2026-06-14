@@ -36,7 +36,10 @@ async def cmd_dict(message: Message):
             f"Всего слов: {total}\n"
             f"На повторении сегодня: 0 🎉\n\n"
             f"Новые слова добавляются автоматически из диалогов с AI!\n"
-            f"Или добавь вручную: /add <слово> = <перевод>"
+            f"Или добавь вручную: /add <слово> = <перевод>",
+            reply_markup=InlineKeyboardBuilder()
+            .button(text="🏠 Главное меню", callback_data="menu_main")
+            .as_markup(),
         )
         return
 
@@ -46,6 +49,7 @@ async def cmd_dict(message: Message):
             text=f"{w.word} — {w.translation}",
             callback_data=f"dict_review:{w.word_id}",
         )
+    builder.button(text="🏠 Главное меню", callback_data="menu_main")
     builder.adjust(1)
 
     await message.answer(
@@ -160,7 +164,10 @@ async def _show_next_or_done(callback: CallbackQuery, conn, repo):
             f"🎉 <b>Все слова на сегодня повторены!</b>\n\n"
             f"Всего в словаре: {total} слов.\n"
             f"Новые слова появятся завтра.\n\n"
-            f"Продолжай практиковаться с AI-репетитором!"
+            f"Продолжай практиковаться с AI-репетитором!",
+            reply_markup=InlineKeyboardBuilder()
+            .button(text="🏠 Главное меню", callback_data="menu_main")
+            .as_markup(),
         )
 
 

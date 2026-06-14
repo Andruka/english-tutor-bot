@@ -36,6 +36,7 @@ async def cmd_exercise(message: Message):
     builder = InlineKeyboardBuilder()
     for ex_type, label in EXERCISE_TYPES.items():
         builder.button(text=label, callback_data=f"ex_type:{ex_type}")
+    builder.button(text="🏠 Главное меню", callback_data="menu_main")
     builder.adjust(1)
 
     await message.answer(
@@ -356,6 +357,7 @@ async def cb_back_to_menu(callback: CallbackQuery):
     builder = InlineKeyboardBuilder()
     for ex_type, label in EXERCISE_TYPES.items():
         builder.button(text=label, callback_data=f"ex_type:{ex_type}")
+    builder.button(text="🏠 Главное меню", callback_data="menu_main")
     builder.adjust(1)
 
     await callback.message.edit_text(

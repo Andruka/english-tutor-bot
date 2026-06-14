@@ -299,6 +299,7 @@ async def _finish_test(target: Message | CallbackQuery, result: PlacementTestRes
     builder = InlineKeyboardBuilder()
     builder.button(text="🎯 Упражнения", callback_data="ex_back_to_menu")
     builder.button(text="💬 Диалог", callback_data="start_dialogue")
+    builder.button(text="🏠 Главное меню", callback_data="menu_main")
 
     if hasattr(target, "message") and hasattr(target.message, "edit_text"):
         await target.message.edit_text(text, reply_markup=builder.as_markup())

@@ -167,6 +167,15 @@ def after_dialogue_kb() -> InlineKeyboardMarkup:
     )
 
 
+def menu_button_kb() -> InlineKeyboardMarkup:
+    """Кнопка возврата в главное меню."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Меню", callback_data="menu_main")]
+        ]
+    )
+
+
 # ──────────────────────────── Помощь ────────────────────────────
 
 def help_kb() -> InlineKeyboardMarkup:
@@ -351,31 +360,43 @@ async def menu_callback_handler(callback: CallbackQuery):
     elif data == "menu_dialogue":
         await callback.message.edit_text(
             "💬 <b>Режим диалога</b>\n\nНапиши что-нибудь на английском, и я помогу! ✨",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🏠 Меню", callback_data="menu_main")]
-                ]
-            ),
+            reply_markup=menu_button_kb(),
         )
     elif data == "menu_voice":
         await callback.message.edit_text(
-            "🎤 Отправь голосовое сообщение — я распознаю речь и отвечу!"
+            "🎤 Отправь голосовое сообщение — я распознаю речь и отвечу!",
+            reply_markup=menu_button_kb(),
         )
     elif data == "menu_lesson":
-        await callback.message.edit_text("📖 Напиши /lesson для нового микро-урока!")
+        await callback.message.edit_text(
+            "📖 Напиши /lesson для нового микро-урока!",
+            reply_markup=menu_button_kb(),
+        )
     elif data == "menu_dictionary":
-        await callback.message.edit_text("📚 Напиши /dict — твой словарь!")
+        await callback.message.edit_text(
+            "📚 Напиши /dict — твой словарь!",
+            reply_markup=menu_button_kb(),
+        )
     elif data == "menu_texts":
         from bot.handlers.texts import _show_library_menu
         await _show_library_menu(callback.message, edit=True)
     elif data == "menu_learnpath":
-        await callback.message.edit_text("🗺️ Напиши /learnpath для персонализированного маршрута!")
+        await callback.message.edit_text(
+            "🗺️ Напиши /learnpath для персонализированного маршрута!",
+            reply_markup=menu_button_kb(),
+        )
     elif data == "menu_new":
-        await callback.message.edit_text("🔄 Отправь /new для новой сессии диалога!")
+        await callback.message.edit_text(
+            "🔄 Отправь /new для новой сессии диалога!",
+            reply_markup=menu_button_kb(),
+        )
     elif data == "menu_progress":
         await _show_progress(callback)
     elif data == "menu_stats":
-        await callback.message.edit_text("📊 Напиши /stats для статистики!")
+        await callback.message.edit_text(
+            "📊 Напиши /stats для статистики!",
+            reply_markup=menu_button_kb(),
+        )
     elif data == "menu_achievements":
         await _show_achievements(callback)
     elif data == "menu_help":
@@ -448,7 +469,8 @@ async def menu_callback_handler(callback: CallbackQuery):
         )
     elif data == "menu_trial":
         await callback.message.edit_text(
-            "🆓 Напиши /trial для активации 3-дневного триала Premium!"
+            "🆓 Напиши /trial для активации 3-дневного триала Premium!",
+            reply_markup=menu_button_kb(),
         )
     elif data == "menu_settings":
         await callback.message.edit_text(
@@ -461,9 +483,10 @@ async def menu_callback_handler(callback: CallbackQuery):
             reply_markup=mode_kb(),
         )
     elif data == "menu_topic":
-        await callback.message.edit_text("📂 Напиши /topic, чтобы выбрать тему!")
-    elif data == "menu_stats":
-        await callback.message.edit_text("📊 Напиши /stats для статистики!")
+        await callback.message.edit_text(
+            "📂 Напиши /topic, чтобы выбрать тему!",
+            reply_markup=menu_button_kb(),
+        )
 
     # Подписка
     elif data.startswith("sub_"):
@@ -476,7 +499,10 @@ async def menu_callback_handler(callback: CallbackQuery):
         }
         plan_id = plan_map.get(data)
         if plan_id == "trial":
-            await callback.message.edit_text("🆓 Напиши /trial для активации!")
+            await callback.message.edit_text(
+                "🆓 Напиши /trial для активации!",
+                reply_markup=menu_button_kb(),
+            )
         elif plan_id:
             cmd = f"/pay_{plan_id}"
             from bot.handlers.subscription import _create_invoice
@@ -499,10 +525,16 @@ async def menu_callback_handler(callback: CallbackQuery):
             reply_markup=mode_kb(),
         )
     elif data == "set_remind":
-        await callback.message.edit_text("🔔 Напиши /remind для настройки напоминаний!")
+        await callback.message.edit_text(
+            "🔔 Напиши /remind для настройки напоминаний!",
+            reply_markup=menu_button_kb(),
+        )
 
     elif data == "menu_referral":
-        await callback.message.edit_text("🤝 Напиши /referral, чтобы увидеть реферальную ссылку!")
+        await callback.message.edit_text(
+            "🤝 Напиши /referral, чтобы увидеть реферальную ссылку!",
+            reply_markup=menu_button_kb(),
+        )
 
     # Режимы
     elif data.startswith("mode_"):
@@ -513,6 +545,7 @@ async def menu_callback_handler(callback: CallbackQuery):
         label = MODE_LABELS.get(mode_id, mode_id)
         await callback.message.edit_text(
             f"🎭 Режим <b>{label}</b> выбран!\n\nТеперь напиши что-нибудь на английском.",
+            reply_markup=menu_button_kb(),
         )
 
     # Помощь
