@@ -61,7 +61,10 @@ def main_menu_kb(
             InlineKeyboardButton(text="📚 Словарь", callback_data="menu_dictionary"),
         ],
         [
+            InlineKeyboardButton(text="📖 Тексты", callback_data="menu_texts"),
             InlineKeyboardButton(text="🏆 Прогресс", callback_data="menu_progress"),
+        ],
+        [
             InlineKeyboardButton(text="⚙️", callback_data="menu_settings"),
         ],
     ]
@@ -357,6 +360,9 @@ async def menu_callback_handler(callback: CallbackQuery):
         await callback.message.edit_text("📖 Напиши /lesson для нового микро-урока!")
     elif data == "menu_dictionary":
         await callback.message.edit_text("📚 Напиши /dict — твой словарь!")
+    elif data == "menu_texts":
+        from bot.handlers.texts import _show_library_menu
+        await _show_library_menu(callback.message, edit=True)
     elif data == "menu_learnpath":
         await callback.message.edit_text("🗺️ Напиши /learnpath для персонализированного маршрута!")
     elif data == "menu_new":

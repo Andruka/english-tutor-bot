@@ -245,13 +245,59 @@ async def init_db(db_path: str = None):
             );
         """)
 
-        # Идемпотентная миграция — subscription_tier для существующих БД
+        # ── Таблицы библиотеки текстов ──────────────────────────────────
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS texts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                level TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'general',
+                content TEXT NOT NULL,
+                word_count INTEGER NOT NULL DEFAULT 0,
+                author TEXT DEFAULT '',
+                source_url TEXT DEFAULT '',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS text_progress (
+                user_id INTEGER NOT NULL,
+                text_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'started',
+                words_learned INTEGER NOT NULL DEFAULT 0,
+                started_at TEXT NOT NULL DEFAULT (datetime('now')),
+                completed_at TEXT,
+                PRIMARY KEY (user_id, text_id),
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (text_id) REFERENCES texts(id)
+            );
+        """)
+
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS text_bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                text_id INTEGER NOT NULL,
+                paragraph_index INTEGER NOT NULL DEFAULT 0,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (text_id) REFERENCES texts(id)
+            );
+        """)
+
+        # Идемпотентная миграция: text_progress может не иметь words_learned
         try:
-            await conn.execute(
-                "ALTER TABLE users ADD COLUMN subscription_tier TEXT DEFAULT 'premium'"
-            )
+            cursor = await conn.execute("PRAGMA table_info(text_progress)")
+            tp_cols = {row[1] for row in await cursor.fetchall()}
+            if "words_learned" not in tp_cols:
+                await conn.execute(
+                    "ALTER TABLE text_progress ADD COLUMN words_learned INTEGER NOT NULL DEFAULT 0"
+                )
         except Exception:
-            pass  # колонка уже существует
+            pass
 
         await conn.commit()
 
@@ -1073,5 +1119,286 @@ class ReferralRewardRepository:
             reward_type=row["reward_type"],
             reward_value=row["reward_value"],
             claimed=bool(row["claimed"]),
+            created_at=row["created_at"],
+        )
+
+
+# ── Библиотека текстов ─────────────────────────────────────────────────────
+
+
+@dataclass
+class Text:
+    id: int = 0
+    title: str = ""
+    level: str = "A2"
+    category: str = "general"
+    content: str = ""
+    word_count: int = 0
+    author: str = ""
+    source_url: str = ""
+    is_active: bool = True
+    created_at: str = ""
+
+
+@dataclass
+class UserTextProgress:
+    user_id: int = 0
+    text_id: int = 0
+    status: str = "started"
+    words_learned: int = 0
+    started_at: str = ""
+    completed_at: str | None = None
+
+
+@dataclass
+class TextBookmark:
+    id: int = 0
+    user_id: int = 0
+    text_id: int = 0
+    paragraph_index: int = 0
+    note: str = ""
+    created_at: str = ""
+
+
+class TextRepository:
+    """Repository for reading texts."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def create(
+        self, title: str, level: str, content: str,
+        category: str = "general", author: str = "",
+        source_url: str = "",
+    ) -> Text:
+        word_count = len(content.split())
+        cursor = await self.conn.execute(
+            """INSERT INTO texts (title, level, category, content, word_count, author, source_url)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (title, level, category, content, word_count, author, source_url),
+        )
+        await self.conn.commit()
+        return await self.get(cursor.lastrowid)
+
+    async def get(self, text_id: int) -> Optional[Text]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM texts WHERE id = ?", (text_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_text(row) if row else None
+
+    async def get_active(self, text_id: int) -> Optional[Text]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM texts WHERE id = ? AND is_active = 1", (text_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_text(row) if row else None
+
+    async def list_by_level(
+        self, level: str, category: str = "",
+    ) -> list[Text]:
+        if category:
+            cursor = await self.conn.execute(
+                "SELECT * FROM texts WHERE level = ? AND category = ? AND is_active = 1 ORDER BY word_count ASC",
+                (level, category),
+            )
+        else:
+            cursor = await self.conn.execute(
+                "SELECT * FROM texts WHERE level = ? AND is_active = 1 ORDER BY word_count ASC",
+                (level,),
+            )
+        rows = await cursor.fetchall()
+        return [self._row_to_text(r) for r in rows]
+
+    async def list_by_category(
+        self, category: str,
+    ) -> list[Text]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM texts WHERE category = ? AND is_active = 1 ORDER BY level, word_count ASC",
+            (category,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_text(r) for r in rows]
+
+    async def list_all(self) -> list[Text]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM texts WHERE is_active = 1 ORDER BY level, word_count ASC"
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_text(r) for r in rows]
+
+    async def list_levels(self) -> list[str]:
+        cursor = await self.conn.execute(
+            "SELECT DISTINCT level FROM texts WHERE is_active = 1 ORDER BY level"
+        )
+        rows = await cursor.fetchall()
+        return [r["level"] for r in rows]
+
+    async def list_categories(self) -> list[str]:
+        cursor = await self.conn.execute(
+            "SELECT DISTINCT category FROM texts WHERE is_active = 1 ORDER BY category"
+        )
+        rows = await cursor.fetchall()
+        return [r["category"] for r in rows]
+
+    async def count_by_level(self, level: str) -> int:
+        cursor = await self.conn.execute(
+            "SELECT COUNT(*) as cnt FROM texts WHERE level = ? AND is_active = 1",
+            (level,),
+        )
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
+
+    async def delete(self, text_id: int) -> None:
+        await self.conn.execute(
+            "UPDATE texts SET is_active = 0 WHERE id = ?", (text_id,)
+        )
+        await self.conn.commit()
+
+    def _row_to_text(self, row) -> Text:
+        return Text(
+            id=row["id"],
+            title=row["title"],
+            level=row["level"],
+            category=row["category"],
+            content=row["content"],
+            word_count=row["word_count"],
+            author=row["author"],
+            source_url=row["source_url"],
+            is_active=bool(row["is_active"]),
+            created_at=row["created_at"],
+        )
+
+
+class TextProgressRepository:
+    """Repository for user reading progress."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def start(self, user_id: int, text_id: int) -> UserTextProgress:
+        cursor = await self.conn.execute(
+            """INSERT OR IGNORE INTO text_progress (user_id, text_id)
+               VALUES (?, ?)""",
+            (user_id, text_id),
+        )
+        await self.conn.commit()
+        return await self.get(user_id, text_id)
+
+    async def complete(self, user_id: int, text_id: int) -> None:
+        await self.conn.execute(
+            """UPDATE text_progress
+               SET status = 'completed', completed_at = datetime('now')
+               WHERE user_id = ? AND text_id = ?""",
+            (user_id, text_id),
+        )
+        await self.conn.commit()
+
+    async def increment_words(self, user_id: int, text_id: int, count: int = 1) -> None:
+        await self.conn.execute(
+            """UPDATE text_progress
+               SET words_learned = words_learned + ?
+               WHERE user_id = ? AND text_id = ?""",
+            (count, user_id, text_id),
+        )
+        await self.conn.commit()
+
+    async def get(self, user_id: int, text_id: int) -> Optional[UserTextProgress]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM text_progress WHERE user_id = ? AND text_id = ?",
+            (user_id, text_id),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_progress(row) if row else None
+
+    async def list_for_user(self, user_id: int) -> list[UserTextProgress]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM text_progress WHERE user_id = ? ORDER BY started_at DESC",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_progress(r) for r in rows]
+
+    async def stats(self, user_id: int) -> dict:
+        cursor = await self.conn.execute(
+            """SELECT
+                   COUNT(*) as total_started,
+                   SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                   COALESCE(SUM(words_learned), 0) as words_learned
+               FROM text_progress WHERE user_id = ?""",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+        return {
+            "total_started": row["total_started"],
+            "completed": row["completed"],
+            "words_learned": row["words_learned"],
+        }
+
+    def _row_to_progress(self, row) -> UserTextProgress:
+        return UserTextProgress(
+            user_id=row["user_id"],
+            text_id=row["text_id"],
+            status=row["status"],
+            words_learned=row["words_learned"],
+            started_at=row["started_at"],
+            completed_at=row["completed_at"],
+        )
+
+
+class TextBookmarkRepository:
+    """Repository for text bookmarks."""
+
+    def __init__(self, conn: aiosqlite.Connection):
+        self.conn = conn
+
+    async def add(
+        self, user_id: int, text_id: int,
+        paragraph_index: int = 0, note: str = "",
+    ) -> TextBookmark:
+        cursor = await self.conn.execute(
+            """INSERT INTO text_bookmarks (user_id, text_id, paragraph_index, note)
+               VALUES (?, ?, ?, ?)""",
+            (user_id, text_id, paragraph_index, note),
+        )
+        await self.conn.commit()
+        return await self.get(cursor.lastrowid)
+
+    async def get(self, bookmark_id: int) -> Optional[TextBookmark]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM text_bookmarks WHERE id = ?", (bookmark_id,)
+        )
+        row = await cursor.fetchone()
+        return self._row_to_bookmark(row) if row else None
+
+    async def list_for_user(self, user_id: int) -> list[TextBookmark]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM text_bookmarks WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_bookmark(r) for r in rows]
+
+    async def list_for_text(self, user_id: int, text_id: int) -> list[TextBookmark]:
+        cursor = await self.conn.execute(
+            "SELECT * FROM text_bookmarks WHERE user_id = ? AND text_id = ? ORDER BY paragraph_index",
+            (user_id, text_id),
+        )
+        rows = await cursor.fetchall()
+        return [self._row_to_bookmark(r) for r in rows]
+
+    async def remove(self, bookmark_id: int) -> None:
+        await self.conn.execute(
+            "DELETE FROM text_bookmarks WHERE id = ?", (bookmark_id,)
+        )
+        await self.conn.commit()
+
+    def _row_to_bookmark(self, row) -> TextBookmark:
+        return TextBookmark(
+            id=row["id"],
+            user_id=row["user_id"],
+            text_id=row["text_id"],
+            paragraph_index=row["paragraph_index"],
+            note=row["note"],
             created_at=row["created_at"],
         )

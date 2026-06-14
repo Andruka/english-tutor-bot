@@ -21,6 +21,7 @@ from bot.handlers import (
     placement,
     gamification,
     referral,
+    texts,
 )
 from bot.db import (
     close_all_connections,
@@ -159,6 +160,7 @@ async def main():
     dp.include_router(placement.router)
     dp.include_router(gamification.router)
     dp.include_router(referral.router)
+    dp.include_router(texts.router)
 
     # Запускаем фоновую проверку истекающих подписок
     checker_task = start_subscription_checker(bot=bot, interval=3600, notify=True)
