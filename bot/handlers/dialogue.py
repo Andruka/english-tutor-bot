@@ -3,6 +3,7 @@
 import logging
 import os
 import html
+from datetime import date
 from aiogram import Router, F
 from aiogram.types import (
     InlineKeyboardButton,
@@ -82,8 +83,15 @@ def get_or_create_tutor(user_id: int, level: str, topic: str) -> AITutor:
     return _tutor_sessions[user_id]
 
 
-async def _check_limit(message: Message, user) -> bool:
+async def _check_limit(message: Message, user, conn=None) -> bool:
     """Проверяет дневной лимит. Возвращает True, если лимит не превышен."""
+    today = date.today()
+    # Если день сменился — сбрасываем счётчик, чтобы не блокировать
+    if user.last_dialogue_date != today:
+        user.dialogues_today = 0
+        if conn:
+            from bot.db import UserRepository
+            await UserRepository(conn).reset_user_dialogues(user.user_id)
     if not user.subscription and user.dialogues_today >= FREE_DAILY_LIMIT:
         await message.answer(
             f"📊 Дневной лимит ({FREE_DAILY_LIMIT} диалогов) исчерпан.\n\n"
@@ -155,7 +163,7 @@ async def handle_text_dialogue(message: Message):
         await message.answer("Пожалуйста, начни с команды /start")
         return
 
-    if not await _check_limit(message, user):
+    if not await _check_limit(message, user, conn=conn):
         return
 
     topic = _user_topics.get(user_id, "introduction")
@@ -200,7 +208,7 @@ async def handle_voice_dialogue(message: Message):
         await message.answer("Пожалуйста, начни с команды /start")
         return
 
-    if not await _check_limit(message, user):
+    if not await _check_limit(message, user, conn=conn):
         return
 
     # Мгновенный фидбек — пользователь сразу видит, что бот работает
@@ -388,7 +396,7 @@ async def cmd_stats(message: Message):
     weekly_line = ""
     if total_dialogue_count > 0:
         # Средняя оценка за всё время
-        from datetime import datetime, timezone, timedelta
+        from datetime import date, datetime, timedelta
 
         cursor = await conn.execute(
             "SELECT AVG(rating) FROM dialogues WHERE user_id = ?", (user_id,)

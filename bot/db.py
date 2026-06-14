@@ -297,6 +297,14 @@ class UserRepository:
         await self.conn.execute("UPDATE users SET dialogues_today = 0")
         await self.conn.commit()
 
+    async def reset_user_dialogues(self, user_id: int):
+        """Сброс счётчика диалогов для конкретного пользователя."""
+        await self.conn.execute(
+            "UPDATE users SET dialogues_today = 0, last_dialogue_date = ? WHERE user_id = ?",
+            (date.today().isoformat(), user_id),
+        )
+        await self.conn.commit()
+
     async def set_subscription(
         self, user_id: int, active: bool, expiry: str | None = None, tier: str = "premium"
     ):
