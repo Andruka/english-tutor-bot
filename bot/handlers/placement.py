@@ -67,7 +67,7 @@ CEFR_DESCRIPTIONS: dict[str, str] = {
 # ── Commands ─────────────────────────────────────────────────────────────
 
 
-MINIAPP_URL = "https://45.134.13.27:8081"
+MINIAPP_URL = "https://search-pee-accounting-cordless.trycloudflare.com"
 
 
 @router.message(Command("miniapp"))
