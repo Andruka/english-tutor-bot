@@ -18,6 +18,7 @@ async def test_init_db_creates_placement_test_results_table(tmp_path):
     assert columns == {
         "result_id": "INTEGER",
         "user_id": "INTEGER",
+        "session_id": "TEXT",
         "answers_json": "TEXT",
         "total_questions": "INTEGER",
         "correct_answers": "INTEGER",

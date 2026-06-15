@@ -221,6 +221,7 @@ async def init_db(db_path: str = None):
             CREATE TABLE IF NOT EXISTS placement_test_results (
                 result_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
+                session_id TEXT,
                 answers_json TEXT NOT NULL,
                 total_questions INTEGER NOT NULL,
                 correct_answers INTEGER NOT NULL,
@@ -230,6 +231,15 @@ async def init_db(db_path: str = None):
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             );
         """)
+
+        # Идемпотентная миграция для Mini App placement API: session_id нужен,
+        # чтобы повторная отправка одного теста возвращала 409 вместо дубля.
+        cursor = await conn.execute("PRAGMA table_info(placement_test_results)")
+        placement_result_columns = {row[1] for row in await cursor.fetchall()}
+        if "session_id" not in placement_result_columns:
+            await conn.execute(
+                "ALTER TABLE placement_test_results ADD COLUMN session_id TEXT"
+            )
 
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS referral_rewards (

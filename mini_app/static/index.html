@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Placement Test</title>
+<script src="https://telegram.org/js/telegram-webapp.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  background:var(--tg-theme-bg-color,#fff);
+  color:var(--tg-theme-text-color,#222);
+  padding:0;margin:0;min-height:100vh
+}
+.container{max-width:600px;margin:0 auto;padding:16px}
+.hidden{display:none!important}
+
+/* Header / Progress */
+.header{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 16px;
+  background:var(--tg-theme-secondary-bg-color,#f5f5f5);
+  border-bottom:1px solid var(--tg-theme-hint-color,#ccc)
+}
+.header h2{font-size:16px;font-weight:600}
+.progress{font-size:14px;color:var(--tg-theme-hint-color,#888)}
+.progress-bar{
+  height:4px;background:var(--tg-theme-secondary-bg-color,#eee);
+  margin:0;border-radius:2px;overflow:hidden
+}
+.progress-fill{
+  height:100%;background:var(--tg-theme-button-color,#2481cc);
+  border-radius:2px;transition:width .3s ease
+}
+
+/* Question card */
+.question-card{padding:24px 16px}
+.question-level{
+  font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--tg-theme-hint-color,#888);margin-bottom:8px
+}
+.question-prompt{
+  font-size:18px;line-height:1.5;font-weight:500;margin-bottom:24px
+}
+
+/* Choices */
+.choices{display:flex;flex-direction:column;gap:10px}
+.choice-btn{
+  display:block;width:100%;padding:14px 16px;
+  border:2px solid var(--tg-theme-hint-color,#ddd);
+  border-radius:12px;background:var(--tg-theme-bg-color,#fff);
+  color:var(--tg-theme-text-color,#222);
+  font-size:16px;text-align:left;cursor:pointer;
+  transition:border-color .15s,background .15s;
+  -webkit-tap-highlight-color:transparent
+}
+.choice-btn:hover,.choice-btn:focus{border-color:var(--tg-theme-button-color,#2481cc)}
+.choice-btn.selected{
+  border-color:var(--tg-theme-button-color,#2481cc);
+  background:color-mix(in srgb,var(--tg-theme-button-color,#2481cc) 10%,transparent)
+}
+.choice-btn:disabled{opacity:.6;cursor:default}
+.choice-btn.correct{
+  border-color:#2e7d32;background:#e8f5e9;
+  color:var(--tg-theme-text-color,#222)
+}
+.choice-btn.wrong{
+  border-color:#c62828;background:#ffebee;
+  color:var(--tg-theme-text-color,#222)
+}
+
+/* Navigation */
+.nav{padding:16px;display:flex;gap:12px}
+.btn{
+  flex:1;padding:14px;border:none;border-radius:12px;
+  font-size:16px;font-weight:600;cursor:pointer;
+  transition:opacity .15s;-webkit-tap-highlight-color:transparent
+}
+.btn.primary{
+  background:var(--tg-theme-button-color,#2481cc);
+  color:var(--tg-theme-button-text-color,#fff)
+}
+.btn.secondary{
+  background:var(--tg-theme-secondary-bg-color,#f0f0f0);
+  color:var(--tg-theme-text-color,#222)
+}
+.btn:disabled{opacity:.4;cursor:default}
+
+/* Result screen */
+.result-card{text-align:center;padding:40px 16px}
+.result-level{
+  font-size:48px;font-weight:700;margin:16px 0;
+  color:var(--tg-theme-button-color,#2481cc)
+}
+.result-score{font-size:18px;color:var(--tg-theme-hint-color,#888)}
+.result-breakdown{
+  text-align:left;margin:24px 0;padding:16px;
+  background:var(--tg-theme-secondary-bg-color,#f5f5f5);
+  border-radius:12px
+}
+.result-breakdown h3{font-size:14px;margin-bottom:12px;color:var(--tg-theme-hint-color,#888)}
+.level-row{
+  display:flex;justify-content:space-between;padding:6px 0;
+  font-size:14px
+}
+.level-row .bar-wrap{
+  flex:1;margin:0 12px;display:flex;align-items:center
+}
+.level-row .bar{
+  height:6px;border-radius:3px;
+  background:var(--tg-theme-button-color,#2481cc);
+  transition:width .5s ease
+}
+
+/* Feedback */
+.feedback{
+  padding:12px 16px;border-radius:10px;margin-bottom:16px;
+  font-size:15px;font-weight:500
+}
+.feedback.correct{background:#e8f5e9;color:#2e7d32}
+.feedback.incorrect{background:#ffebee;color:#c62828}
+
+/* Loading */
+.loading{text-align:center;padding:80px 16px;color:var(--tg-theme-hint-color,#888)}
+.spinner{width:36px;height:36px;border:3px solid var(--tg-theme-hint-color,#ddd);
+  border-top-color:var(--tg-theme-button-color,#2481cc);
+  border-radius:50%;animation:spin .8s linear infinite;margin:16px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Error */
+.error{border:2px solid #c62828;border-radius:12px;padding:16px;margin:24px 16px 16px;text-align:center;color:#c62828}
+.error .btn{margin-top:12px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div>Loading questions...</div>
+  </div>
+
+  <div id="questionView" class="hidden">
+    <div class="header">
+      <h2>Placement Test</h2>
+      <span class="progress" id="progressText">0/0</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    <div class="question-card">
+      <div class="question-level" id="questionLevel"></div>
+      <div class="question-prompt" id="questionPrompt"></div>
+      <div id="feedback" class="hidden"></div>
+      <div class="choices" id="choices"></div>
+    </div>
+    <div class="nav" id="nav">
+      <button class="btn secondary hidden" id="prevBtn" onclick="prevQuestion()">← Back</button>
+      <button class="btn primary" id="nextBtn" onclick="nextQuestion()" disabled>Next →</button>
+    </div>
+  </div>
+
+  <div id="resultView" class="hidden">
+    <div class="result-card">
+      <h2>Test Complete! 🎉</h2>
+      <div class="result-level" id="resultLevel"></div>
+      <div class="result-score" id="resultScore"></div>
+      <div class="result-breakdown" id="resultBreakdown"></div>
+      <button class="btn primary" onclick="sendResult()" style="margin-top:24px">Save & Close</button>
+    </div>
+  </div>
+
+  <div id="errorView" class="error hidden">
+    <p id="errorMessage"></p>
+    <button class="btn primary" onclick="location.reload()">Retry</button>
+  </div>
+</div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (!tg) {
+  document.getElementById('loading').classList.add('hidden');
+  showError('Telegram WebApp not available. Open this in Telegram.');
+}
+
+tg?.expand();
+tg?.ready();
+
+// ── State ──────────────────────────────────────────
+let state = {
+  questions: [],
+  sessionId: null,
+  currentIndex: 0,
+  answers: {},
+  result: null,
+};
+
+// ── Helpers ─────────────────────────────────────────
+function getInitData() {
+  return tg?.initData || '';
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = {
+    'X-Telegram-Init-Data': getInitData(),
+    ...options.headers,
+  };
+  if (options.body && !(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(path, { ...options, headers });
+  if (!res.ok) {
+    const detail = await res.json().then(d => d.detail).catch(() => 'Request failed');
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function showError(msg) {
+  document.getElementById('errorMessage').textContent = msg;
+  document.getElementById('errorView').classList.remove('hidden');
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ── Load questions ──────────────────────────────────
+async function loadQuestions() {
+  try {
+    const data = await apiFetch('/api/placement/questions');
+    state.sessionId = data.session_id;
+    state.questions = data.questions;
+    state.answers = {};
+    state.currentIndex = 0;
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('questionView').classList.remove('hidden');
+    renderQuestion();
+  } catch (err) {
+    document.getElementById('loading').classList.add('hidden');
+    showError(err.message);
+  }
+}
+
+// ── Render question ─────────────────────────────────
+function renderQuestion() {
+  const q = state.questions[state.currentIndex];
+  if (!q) return;
+
+  const total = state.questions.length;
+  const idx = state.currentIndex;
+
+  // Progress
+  document.getElementById('progressText').textContent = `${idx + 1}/${total}`;
+  document.getElementById('progressFill').style.width = `${((idx + 1) / total) * 100}%`;
+
+  // Level badge
+  document.getElementById('questionLevel').textContent = `Level ${q.level.toUpperCase()} · ${capitalize(q.type.replace('_', ' '))}`;
+
+  // Prompt
+  document.getElementById('questionPrompt').innerHTML = q.prompt;
+
+  // Choices
+  const choicesEl = document.getElementById('choices');
+  choicesEl.innerHTML = '';
+  const savedAnswer = state.answers[q.question_id];
+
+  // Shuffle choices per question (deterministic from session)
+  const choices = shuffle([...q.choices]);
+  // But shuffle once — fix order for this session
+  if (!q._shuffled) {
+    q._shuffled = choices;
+  }
+
+  q._shuffled.forEach((choice, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn' + (savedAnswer === choice ? ' selected' : '');
+    btn.textContent = choice;
+    btn.onclick = () => selectChoice(q.question_id, choice);
+    btn.id = `choice-${i}`;
+    choicesEl.appendChild(btn);
+  });
+
+  // Hide feedback when changing question
+  document.getElementById('feedback').classList.add('hidden');
+
+  // Nav buttons
+  updateNav();
+}
+
+function capitalize(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function selectChoice(questionId, choice) {
+  state.answers[questionId] = choice;
+  // Update UI
+  document.querySelectorAll('.choice-btn').forEach((btn, i) => {
+    btn.classList.toggle('selected', btn.textContent === choice);
+  });
+  document.getElementById('nextBtn').disabled = false;
+}
+
+function updateNav() {
+  const total = state.questions.length;
+  const idx = state.currentIndex;
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const q = state.questions[idx];
+
+  prevBtn.classList.toggle('hidden', idx === 0);
+  const answered = !!state.answers[q?.question_id];
+  nextBtn.textContent = idx === total - 1 ? 'Submit ✓' : 'Next →';
+  nextBtn.disabled = !answered;
+}
+
+function nextQuestion() {
+  const total = state.questions.length;
+  const idx = state.currentIndex;
+  const q = state.questions[idx];
+
+  if (!state.answers[q.question_id]) return;
+
+  if (idx === total - 1) {
+    submitTest();
+    return;
+  }
+
+  state.currentIndex++;
+  renderQuestion();
+}
+
+function prevQuestion() {
+  if (state.currentIndex > 0) {
+    state.currentIndex--;
+    renderQuestion();
+  }
+}
+
+// ── Submit ──────────────────────────────────────────
+async function submitTest() {
+  const nextBtn = document.getElementById('nextBtn');
+  nextBtn.disabled = true;
+  nextBtn.textContent = 'Saving...';
+  nextBtn.style.opacity = '0.6';
+
+  try {
+    const result = await apiFetch('/api/placement/submit', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        answers: state.answers,
+      }),
+    });
+    state.result = result;
+    showResult();
+  } catch (err) {
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'Retry';
+    showError(err.message);
+  }
+}
+
+function showResult() {
+  const r = state.result;
+  document.getElementById('questionView').classList.add('hidden');
+  document.getElementById('resultView').classList.remove('hidden');
+  document.getElementById('resultLevel').textContent = r.estimated_level;
+  document.getElementById('resultScore').textContent = `${r.correct_answers}/${r.total_questions} correct (${r.score}%)`;
+
+  // Level breakdown
+  const breakdownEl = document.getElementById('resultBreakdown');
+  breakdownEl.innerHTML = '';
+  const levels = Object.entries(r.level_breakdown || {});
+  if (levels.length) {
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Level Breakdown';
+    breakdownEl.appendChild(h3);
+    levels.forEach(([level, data]) => {
+      const row = document.createElement('div');
+      row.className = 'level-row';
+      row.innerHTML = `<span>${level}</span>
+        <div class="bar-wrap"><div class="bar" style="width:${data.score}%"></div></div>
+        <span>${data.correct}/${data.total}</span>`;
+      breakdownEl.appendChild(row);
+    });
+  }
+}
+
+function sendResult() {
+  if (!tg) {
+    alert(`Level: ${state.result.estimated_level}\nScore: ${state.result.score}%`);
+    return;
+  }
+  // Send data back to bot
+  tg.sendData(JSON.stringify({
+    session_id: state.sessionId,
+    level: state.result.estimated_level,
+    score: state.result.score,
+  }));
+  tg.close();
+}
+
+// ── Init ────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', loadQuestions);
+</script>
+</body>
+</html>

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, WebAppInfo
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -65,6 +65,26 @@ CEFR_DESCRIPTIONS: dict[str, str] = {
 
 
 # ── Commands ─────────────────────────────────────────────────────────────
+
+
+MINIAPP_URL = "https://45.134.13.27:8081"
+
+
+@router.message(Command("miniapp"))
+async def cmd_miniapp(message: Message):
+    """Start placement test via Telegram Mini App."""
+    builder = InlineKeyboardBuilder()
+    builder.button(
+        text="🎯 Пройти тест",
+        web_app=WebAppInfo(url=MINIAPP_URL),
+    )
+    await message.answer(
+        "🎯 <b>Placement Test</b>\n\n"
+        "Пройди тест в удобном формате — вопросы отображаются\n"
+        "полностью, больше вариантов ответа.\n\n"
+        "Нажми кнопку ниже, чтобы начать.",
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.message(Command("test"))
