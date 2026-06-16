@@ -1,43 +1,37 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-dist/
-build/
-
-# Virtual environment
-.venv/
-venv/
-
-# Environment
-.env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
 
 # Coverage
-htmlcov/
-.coverage
-coverage.xml
-
 # Data
-data/
-*.db
-
+# Environment
 # Exports
-/exports/
-
-# Temp debug files
-_tmp_*.py
-
+# IDE
 # Internal planning/research
+# Mini App spikes — not for deployment
+# OS
+# Python
+# Temp debug files
+# Virtual environment
+*.db
+*.egg-info/
+*.py[cod]
+*.pyo
+*.swo
+*.swp
+.DS_Store
+.coverage
+.env
+.idea/
+.venv/
+.vscode/
+/exports/
 /plans/
 /research/
+Thumbs.db
+__pycache__/
+_tmp_*.py
+build/
+coverage.xml
+data/
+dist/
+htmlcov/
+spikes/
+venv/

@@ -298,6 +298,61 @@ async def init_db(db_path: str = None):
             );
         """)
 
+        # ── Индексы для библиотеки текстов ─────────────────────────────
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_texts_level ON texts(level)"
+            )
+        except Exception:
+            pass
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_texts_category ON texts(category)"
+            )
+        except Exception:
+            pass
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_texts_active ON texts(is_active)"
+            )
+        except Exception:
+            pass
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bookmarks_user ON text_bookmarks(user_id)"
+            )
+        except Exception:
+            pass
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bookmarks_text ON text_bookmarks(text_id)"
+            )
+        except Exception:
+            pass
+
+        # ── Таблица AI-квизов ─────────────────────────────────────────
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_attempts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL,
+                text_id     INTEGER NOT NULL,
+                questions   TEXT NOT NULL,
+                answers     TEXT DEFAULT '[]',
+                score       INTEGER DEFAULT 0,
+                total       INTEGER DEFAULT 0,
+                completed   INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id),
+                FOREIGN KEY (text_id) REFERENCES texts(id)
+            );
+        """)
+        try:
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_quiz_user_text ON quiz_attempts(user_id, text_id)"
+            )
+        except Exception:
+            pass
+
         # Идемпотентная миграция: text_progress может не иметь words_learned
         try:
             cursor = await conn.execute("PRAGMA table_info(text_progress)")
@@ -1332,8 +1387,8 @@ class TextProgressRepository:
     async def stats(self, user_id: int) -> dict:
         cursor = await self.conn.execute(
             """SELECT
-                   COUNT(*) as total_started,
-                   SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                   COALESCE(COUNT(*), 0) as total_started,
+                   COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) as completed,
                    COALESCE(SUM(words_learned), 0) as words_learned
                FROM text_progress WHERE user_id = ?""",
             (user_id,),
